@@ -1,0 +1,2321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sorting Dojo</title>
+<style>
+  :root {
+    --bg:       #1a1a2e;
+    --panel:    #16213e;
+    --accent:   #0f3460;
+    --highlight:#e94560;
+    --card:     #2a2a4a;
+    --card-h:   #3a3a6a;
+    --text:     #eaeaea;
+    --muted:    #888;
+    --success:  #4caf50;
+    --danger:   #e94560;
+    --temp-bg:  #1a3a2e;
+    --scratch-bg:#2e1a3a;
+    --radius:   8px;
+    --card-size:64px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    gap: 24px;
+  }
+
+  header {
+    text-align: center;
+  }
+  header h1 { font-size: 2rem; letter-spacing: 2px; }
+  header p  { color: var(--muted); margin-top: 4px; font-size: .9rem; }
+
+  /* ── Controls bar ─────────────────────────────────── */
+  #controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+  }
+  .controls-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+  }
+  .controls-row.post-sort {
+    border-top: 1px solid rgba(255,255,255,.08);
+    padding-top: 8px;
+  }
+  label { font-size: .85rem; color: var(--muted); }
+  input[type=number], input[type=text] {
+    background: var(--card);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    width: 80px;
+    font-size: .9rem;
+  }
+  button {
+    background: var(--accent);
+    color: var(--text);
+    border: 1px solid transparent;
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: .9rem;
+    transition: background .15s, border-color .15s;
+  }
+  button:hover:not(:disabled) { background: #1a4a8a; border-color: rgba(64,200,200,.5); }
+  button:focus-visible { outline: 2px solid #40c8c8; outline-offset: 2px; }
+  button.primary { background: #163d6e; }
+  button.success { background: var(--success); border-color: transparent; }
+  button:disabled { opacity: .4; cursor: default; }
+
+  /* ── Algorithm declaration bar ──────────────────── */
+  #algo-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 900px;
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 12px 20px;
+    flex-wrap: wrap;
+  }
+  #algo-bar label { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+  #algo-select {
+    background: var(--card);
+    border: 2px solid var(--accent);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    flex: 1;
+    min-width: 180px;
+  }
+  #algo-select.declared { border-color: #40c8c8; color: #40c8c8; }
+  #algo-lock-note { font-size: .75rem; color: var(--muted); font-style: italic; }
+
+  /* ── Section labels ───────────────────────────────── */
+  .zone-label {
+    font-size: .75rem;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  /* ── Main array ───────────────────────────────────── */
+  #array-section {
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    width: 100%;
+    max-width: 900px;
+  }
+  #array-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-height: calc(var(--card-size) + 16px);
+  }
+
+  /* ── Utility row: Temp + Scratch ─────────────────── */
+  #utility-row {
+    display: flex;
+    gap: 24px;
+    width: 100%;
+    max-width: 900px;
+    flex-wrap: wrap;
+  }
+
+  #temp-section {
+    background: var(--temp-bg);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    flex: 0 0 auto;
+    min-width: 140px;
+  }
+  #temp-slot {
+    display: flex;
+    gap: 10px;
+    min-height: calc(var(--card-size) + 16px);
+    align-items: stretch;
+  }
+  #temp-slot .slot {
+    flex: 1;
+    width: auto;
+    height: auto;
+  }
+
+  #scratch-section {
+    background: var(--scratch-bg);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    flex: 1 1 200px;
+    transition: opacity .3s;
+  }
+  #scratch-section.scratch-unavailable {
+    opacity: .3;
+    pointer-events: none;
+  }
+  #temp-section.temp-unavailable {
+    opacity: .3;
+    pointer-events: none;
+  }
+  #scratch-section.scratch-unavailable #scratch-slots,
+  #scratch-section.scratch-unavailable .add-slot-btn { display: none; }
+  #scratch-unavail-note { font-style: italic; }
+  #scratch-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-height: calc(var(--card-size) + 16px);
+    align-items: flex-start;
+  }
+
+  /* ── Drop slot (empty) ───────────────────────────── */
+  .slot {
+    width: var(--card-size);
+    height: var(--card-size);
+    border: 2px dashed var(--accent);
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: border-color .15s, background .15s;
+    flex-shrink: 0;
+  }
+  .slot.over {
+    border-color: var(--highlight);
+    background: rgba(233,69,96,.12);
+  }
+  /* shift mode hover — warns that destination will be overwritten */
+  .slot.over.shift-target {
+    border-color: #f0a030;
+    background: rgba(240,160,48,.18);
+  }
+
+  /* shift mode button active state */
+  button.shift-active {
+    background: #f0a030;
+    color: #000;
+  }
+  button.shift-active:hover { background: #d08020; }
+
+  /* slot index label */
+  .slot[data-index]::after {
+    content: attr(data-index);
+    position: absolute;
+    bottom: 2px;
+    right: 5px;
+    font-size: .6rem;
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+  /* ── Playback highlights ─────────────────────────── */
+  .slot.hl-from {
+    border-color: #f0a030;
+    border-style: solid;
+    background: rgba(240,160,48,.12);
+  }
+  .slot.hl-from::before {
+    content: 'FROM';
+    position: absolute;
+    top: 3px; left: 4px;
+    font-size: .55rem;
+    font-weight: bold;
+    color: #f0a030;
+    pointer-events: none;
+    letter-spacing: .5px;
+  }
+  .slot.hl-to {
+    border-color: #50c878;
+    border-style: solid;
+    background: rgba(80,200,120,.12);
+  }
+  .slot.hl-to::before {
+    content: 'TO';
+    position: absolute;
+    top: 3px; left: 4px;
+    font-size: .55rem;
+    font-weight: bold;
+    color: #50c878;
+    pointer-events: none;
+    letter-spacing: .5px;
+  }
+  /* when a slot is both from and to (swap) show SWAP */
+  .slot.hl-from.hl-to {
+    border-color: #c070f0;
+    background: rgba(192,112,240,.12);
+  }
+  .slot.hl-from.hl-to::before {
+    content: 'SWAP';
+    color: #c070f0;
+  }
+
+  /* ── Card tag (letter subscript for duplicate values) ── */
+  .card-tag {
+    font-size: .45em;
+    font-weight: normal;
+    vertical-align: super;
+    margin-left: 2px;
+    opacity: .8;
+  }
+
+  /* ── Status warn (correct but unstable) ────────────── */
+  #status-msg.warn { color: #f0a030; font-weight: bold; }
+
+  /* ── Value card (draggable) ──────────────────────── */
+  .card {
+    width: var(--card-size);
+    height: var(--card-size);
+    background: var(--card);
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    font-weight: bold;
+    cursor: grab;
+    user-select: none;
+    border: 2px solid transparent;
+    transition: background .15s, transform .1s, border-color .15s;
+    position: relative;
+  }
+  .card:hover { background: var(--card-h); border-color: var(--highlight); }
+  .card.dragging { opacity: .4; transform: scale(.95); }
+  .card.counted {
+    opacity: .35;
+    cursor: default;
+    border-color: var(--muted);
+    filter: grayscale(.6);
+  }
+
+  .card.ghost {
+    opacity: .35;
+    color: var(--muted);
+    border-color: var(--muted);
+    border-style: dashed;
+    cursor: default;
+    font-style: italic;
+  }
+
+  /* ── Flash animations for counting sort ─────────── */
+  @keyframes flash-red {
+    0%   { background: #c0392b; border-color: #e74c3c; }
+    100% { background: var(--card); border-color: transparent; }
+  }
+  @keyframes flash-green {
+    0%   { background: #27ae60; border-color: #2ecc71; }
+    100% { background: var(--card); border-color: transparent; }
+  }
+  .flash-red   { animation: flash-red   .5s ease-out; }
+  .flash-green { animation: flash-green .5s ease-out; }
+
+  /* ── Counter slots (counting sort scratch) ───────── */
+  .counter-slot {
+    width: var(--card-size);
+    height: var(--card-size);
+    border-radius: var(--radius);
+    border: 2px solid var(--muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: rgba(255,255,255,.04);
+    transition: border-color .15s, background .15s;
+  }
+  .counter-slot.unused { opacity: .3; pointer-events: none; }
+  .counter-slot .counter-idx  { font-size: .65rem; color: var(--muted); line-height: 1; }
+  .counter-slot .counter-val  { font-size: 1.4rem; font-weight: bold; line-height: 1; color: #f0a030; }
+  .counter-slot.has-count     { border-color: #f0a030; background: rgba(240,160,48,.1); }
+  .counter-slot.has-count .counter-val { color: #f5c060; }
+  .counter-slot.flash-red-slot { animation: flash-red .5s ease-out; }
+
+  /* ── Add scratch slot button ─────────────────────── */
+  .add-slot-btn {
+    width: var(--card-size);
+    height: var(--card-size);
+    border: 2px dashed var(--muted);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--muted);
+    font-size: 1.6rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color .2s, color .2s;
+    padding: 0;
+  }
+  .add-slot-btn:hover { border-color: var(--highlight); color: var(--highlight); background: transparent; }
+
+  /* ── Status / playback bar ───────────────────────── */
+  #status-bar {
+    width: 100%;
+    max-width: 900px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  #status-msg {
+    flex: 1;
+    font-size: .9rem;
+    color: var(--muted);
+    min-width: 180px;
+  }
+  #status-msg.ok   { color: var(--success); font-weight: bold; }
+  #status-msg.fail { color: var(--danger);  font-weight: bold; }
+
+  #playback-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  #step-counter { font-size: .85rem; color: var(--muted); min-width: 80px; text-align: center; }
+
+  /* ── Share box ───────────────────────────────────── */
+  #share-box {
+    width: 100%;
+    max-width: 900px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #share-url {
+    background: var(--card);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: .8rem;
+    word-break: break-all;
+    width: 100%;
+  }
+
+  /* ── Move log ────────────────────────────────────── */
+  #log-section {
+    width: 100%;
+    max-width: 900px;
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+  }
+  #log-section h3 { font-size: .85rem; color: var(--muted); margin-bottom: 8px; }
+  #move-log {
+    max-height: 140px;
+    overflow-y: auto;
+    font-size: .78rem;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  #move-log .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+  #move-log .log-entry.current { color: var(--text); background: rgba(233,69,96,.1); padding-left: 6px; }
+  #move-log .log-entry.pass-marker {
+    color: #f0c040;
+    font-weight: bold;
+    border-top: 1px solid #f0c04055;
+    border-bottom: 1px solid #f0c04055;
+    padding: 4px 0;
+    letter-spacing: 1px;
+    font-size: .75rem;
+  }
+  #move-log .log-entry.pass-marker.current { background: rgba(240,192,64,.15); }
+
+  /* ── Analysis panel ──────────────────────────────── */
+  #analysis-section {
+    width: 100%;
+    max-width: 900px;
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+  }
+  #analysis-section h3 { font-size: .85rem; color: var(--muted); margin-bottom: 12px; }
+  .analysis-verdict {
+    font-size: .95rem;
+    font-weight: bold;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+  }
+  .analysis-verdict.match     { background: rgba(76,175,80,.15);  color: var(--success); border: 1px solid rgba(76,175,80,.3); }
+  .analysis-verdict.mismatch  { background: rgba(233,69,96,.1);   color: var(--danger);  border: 1px solid rgba(233,69,96,.3); }
+  .analysis-verdict.undeclared{ background: rgba(255,255,255,.05);color: var(--text);    border: 1px solid rgba(255,255,255,.1); }
+  .algo-bars { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+  .algo-bar-row { display: flex; align-items: center; gap: 10px; }
+  .algo-bar-label { width: 140px; font-size: .82rem; color: var(--muted); text-align: right; flex-shrink: 0; }
+  .algo-bar-label.top { color: var(--text); font-weight: bold; }
+  .algo-bar-track { flex: 1; height: 16px; background: rgba(255,255,255,.06); border-radius: 4px; overflow: hidden; }
+  .algo-bar-fill  { height: 100%; border-radius: 4px; }
+  .algo-bar-pct   { width: 36px; font-size: .8rem; color: var(--muted); text-align: right; flex-shrink: 0; }
+  .algo-bar-pct.top { color: var(--text); font-weight: bold; }
+  .analysis-signals h4 { font-size: .75rem; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 6px; }
+  .analysis-signals ul { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+  .analysis-signals li { font-size: .8rem; }
+  .analysis-signals li.good { color: #4caf50; }
+  .analysis-signals li.bad  { color: #e94560; }
+  .analysis-signals li.note { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sorting Dojo</h1>
+  <p>COMP 220 · Algorithms &amp; Data Structures</p>
+</header>
+
+<!-- ── Controls ──────────────────────────────────────── -->
+<div id="controls">
+  <div class="controls-row">
+    <label>N <input type="number" id="n-input" value="8" min="2" max="20"></label>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="duplicates-cb" style="accent-color:var(--highlight)"> Duplicates</label>
+    <label id="range-label" style="display:none" title="Value range 1..R (must be < N for duplicates).">Range <input type="number" id="range-input" min="2" max="26" style="width:56px"></label>
+    <label>Seed <input type="text" id="seed-input" value="" style="width:52px"></label>
+    <button id="new-btn" class="primary">New Puzzle</button>
+    <button id="reset-btn">↺ Reset</button>
+  </div>
+  <div class="controls-row post-sort">
+    <button id="submit-btn">✔ Check Sort</button>
+    <button id="analyze-btn" disabled>🔍 Analyze</button>
+    <button id="share-btn" disabled>🔗 Share</button>
+  </div>
+</div>
+
+<!-- ── Algorithm declaration ─────────────────────────── -->
+<div id="algo-bar">
+  <label for="algo-select">I am demonstrating:</label>
+  <select id="algo-select">
+    <option value="">— not declared —</option>
+    <option value="bubble">Bubble Sort</option>
+    <option value="insertion">Insertion Sort</option>
+    <option value="selection">Selection Sort</option>
+    <option value="merge">Merge Sort</option>
+    <option value="quick">Quick Sort</option>
+    <option value="counting">Counting Sort</option>
+    <option value="radix">Radix Sort</option>
+  </select>
+  <span id="algo-lock-note"></span>
+  <span id="algo-advisory" style="font-size:.78rem;color:#f0a030;font-style:italic"></span>
+  <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);margin-left:auto;cursor:pointer">
+    <input type="checkbox" id="show-tags-cb" style="accent-color:var(--highlight)">
+    Show stability tags
+  </label>
+</div>
+
+<!-- ── Sort action buttons ─────────────────────────────── -->
+<div class="controls-row sort-actions" style="margin:6px 0 2px">
+  <button id="shift-btn">⇌ Swap</button>
+  <button id="pass-btn" disabled>⚑ Mark Pass</button>
+  <button id="undo-btn" disabled>↩ Undo</button>
+</div>
+
+<!-- ── Main array ─────────────────────────────────────── -->
+<section id="array-section">
+  <div class="zone-label" style="display:flex;gap:16px;align-items:baseline;flex-wrap:wrap">
+    <span>Array (before sorting)  <span id="array-label-extra"></span></span>
+    <span id="algo-badge" style="font-size:.8rem;font-weight:bold;color:#40c8c8;letter-spacing:.5px"></span>
+    <span id="copies-badge" style="color:#40c8c8;font-size:.85rem;font-weight:bold;letter-spacing:0"></span>
+  </div>
+  <div id="array-slots"></div>
+</section>
+
+<!-- ── Temp + Scratch ─────────────────────────────────── -->
+<div id="utility-row">
+  <section id="temp-section">
+    <div class="zone-label">Temp Variable</div>
+    <div id="temp-slot"></div>
+  </section>
+  <section id="scratch-section">
+    <div class="zone-label">Scratch Area  <span id="scratch-hint" style="font-size:.7rem;color:var(--muted)">(+ to add slots)</span><span id="scratch-unavail-note" style="font-size:.7rem;color:var(--muted)"></span></div>
+    <div id="scratch-slots"></div>
+  </section>
+</div>
+
+<!-- ── Status + Playback ──────────────────────────────── -->
+<div id="status-bar">
+  <span id="status-msg">Drag values to sort them. Press "Check Sort" when done.</span>
+  <div id="playback-controls">
+    <button id="start-btn" disabled>⏮</button>
+    <button id="prev-btn"  disabled>⏪</button>
+    <button id="play-btn"  disabled>▶</button>
+    <button id="next-btn"  disabled>⏩</button>
+    <button id="end-btn"   disabled>⏭</button>
+    <span id="step-counter"></span>
+    <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted);margin-left:8px">
+      Speed
+      <input type="range" id="speed-slider" min="1" max="5" value="3" step="1"
+             style="width:80px;accent-color:var(--highlight)">
+      <span id="speed-label" style="min-width:28px">1×</span>
+    </label>
+  </div>
+</div>
+
+<!-- ── Share box ──────────────────────────────────────── -->
+<div id="share-box">
+  <div class="zone-label">Shareable Link</div>
+  <textarea id="share-url" rows="2" readonly></textarea>
+</div>
+
+<!-- ── Arrow overlay (playback) ──────────────────────── -->
+<svg id="arrow-overlay"
+     style="position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:999;overflow:visible">
+  <defs>
+    <marker id="arr-head-start" markerWidth="8" markerHeight="8" refX="4" refY="3" orient="auto-start-reverse">
+      <path d="M0,0 L0,6 L8,3 z"/>
+    </marker>
+    <marker id="arr-head-end" markerWidth="8" markerHeight="8" refX="4" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z"/>
+    </marker>
+  </defs>
+  <path id="arrow-path" fill="none" stroke-width="2.5" stroke-linecap="round"
+        marker-start="url(#arr-head-start)" marker-end="url(#arr-head-end)"
+        stroke="transparent"/>
+</svg>
+
+<!-- ── Analysis panel ─────────────────────────────────── -->
+<section id="analysis-section" style="display:none">
+  <h3>Algorithm Analysis</h3>
+  <div id="analysis-content"></div>
+</section>
+
+<!-- ── Move log ───────────────────────────────────────── -->
+<section id="log-section">
+  <h3>Move Log</h3>
+  <div id="move-log"></div>
+</section>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  PRNG — Mulberry32 (seeded, deterministic)
+// ═══════════════════════════════════════════════════════
+function mulberry32(seed) {
+  return function() {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle(arr, rng) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ═══════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════
+let state = {
+  seed:          null,
+  n:             8,
+  range:         null,  // R: value range 1..R; null = N (unique)
+  hasDuplicates: false,
+  initial:    [],   // snapshot after shuffle (for reset) — card objects {v,tag}
+  array:      [],   // current main array — {v,tag} | {ghost,v,tag} | null
+  temp:       null,
+  scratch:    [],
+  scratchSize:3,    // number of scratch slots
+  copies:     0,
+  swaps:      0,
+  actions:    [],   // recorded moves
+  playHead:   -1,   // -1 = live mode
+  playTimer:  null,
+  highlight:     null, // { fromZone, fromIdx, toZone, toIdx } | null
+  transitioning: false,
+  shiftMode:     false,
+  showTags:      false, // show letter tags on cards (auto-on for counting/radix)
+  algorithm:     null,  // declared algorithm key, e.g. 'bubble'
+  algoLocked:    false, // locked after first move
+};
+
+// ═══════════════════════════════════════════════════════
+//  Drag state
+// ═══════════════════════════════════════════════════════
+let drag = { value: null, zone: null, idx: null };
+
+// ═══════════════════════════════════════════════════════
+//  Init / New Puzzle
+// ═══════════════════════════════════════════════════════
+function init() {
+  const params = new URLSearchParams(location.search);
+
+  // If session param present — replay mode bootstrap
+  if (params.has('session')) {
+    loadSession(params.get('session'));
+    return;
+  }
+
+  const seedParam = params.get('seed');
+  newPuzzle(seedParam ? parseInt(seedParam, 10) : null);
+}
+
+function newPuzzle(seedOverride) {
+  stopPlay();
+  clearArrow();
+  const n    = Math.max(2, Math.min(20, parseInt(document.getElementById('n-input').value) || 8));
+  const seed = seedOverride ?? (parseInt(document.getElementById('seed-input').value) || (Date.now() % 9000 + 1000));
+  const dupChecked = document.getElementById('duplicates-cb').checked;
+  const rInput = parseInt(document.getElementById('range-input').value);
+  const r = dupChecked
+    ? Math.min(!isNaN(rInput) && rInput >= 2 ? rInput : Math.floor(n / 2), n - 1)
+    : n;
+
+  document.getElementById('seed-input').value = seed;
+
+  const rng = mulberry32(seed);
+  let nums;
+  if (r === n) {
+    nums = Array.from({ length: n }, (_, i) => i + 1);
+    shuffle(nums, rng);
+  } else {
+    nums = Array.from({ length: n }, () => Math.floor(rng() * r) + 1);
+  }
+
+  // Assign letter tags: value V gets tag A for 1st occurrence, B for 2nd, etc.
+  const hasDups = r < n;
+  const tagCount = {};
+  const cards = nums.map(v => {
+    tagCount[v] = (tagCount[v] || 0) + 1;
+    return { v, tag: hasDups ? String.fromCharCode(64 + tagCount[v]) : '' };
+  });
+
+  state.seed           = seed;
+  state.n              = n;
+  state.range          = r;
+  state.hasDuplicates  = hasDups;
+  state.initial        = cards;
+  state.array          = cards.map(c => ({ ...c }));
+  state.temp        = null;
+  state.scratch      = Array(state.scratchSize).fill(null);
+  state.copies       = 0;
+  state.swaps        = 0;
+  state.actions      = [];
+  state.playHead     = -1;
+  state.highlight    = null;
+  state.algoLocked   = false;
+  state.transitioning = false;
+
+  document.getElementById('share-box').style.display = 'none';
+  document.getElementById('share-btn').disabled   = true;
+  document.getElementById('analyze-btn').disabled = true;
+  document.getElementById('pass-btn').disabled    = true;
+  document.getElementById('undo-btn').disabled    = true;
+  document.getElementById('analysis-section').style.display = 'none';
+  setStatus('Drag values to sort them. Press "Check Sort" when done.', '');
+  render();
+}
+
+function resetScratch() {
+  const isCounting = state.algorithm === 'counting' || state.algorithm === 'radix';
+  if (isCounting) {
+    state.scratch = Array.from({ length: state.scratchSize }, (_, i) => ({ counter: true, v: i, count: 0, outputIdx: 0 }));
+  } else {
+    state.scratch = Array(state.scratchSize).fill(null);
+  }
+}
+
+function resetPuzzle() {
+  stopPlay();
+  state.array    = [...state.initial];
+  state.temp     = null;
+  resetScratch();
+  state.copies        = 0;
+  state.swaps         = 0;
+  state.actions       = [];
+  state.playHead      = -1;
+  state.highlight     = null;
+  state.transitioning = false;
+  state.algoLocked    = false;
+  clearArrow();
+  document.getElementById('share-box').style.display = 'none';
+  document.getElementById('analysis-section').style.display = 'none';
+  document.getElementById('share-btn').disabled   = true;
+  document.getElementById('analyze-btn').disabled = true;
+  document.getElementById('pass-btn').disabled    = true;
+  document.getElementById('undo-btn').disabled    = true;
+  setStatus('Reset. Start again.', '');
+  render();
+}
+
+// ═══════════════════════════════════════════════════════
+//  Record / snapshot
+// ═══════════════════════════════════════════════════════
+function snapshot() {
+  return {
+    array:   [...state.array],
+    temp:    state.temp,
+    scratch: [...state.scratch],
+    copies:  state.copies,
+    swaps:   state.swaps,
+  };
+}
+
+function recordAction(desc, type = 'move', meta = null) {
+  state.actions.splice(state.playHead + 1);
+  state.actions.push({ desc, type, meta, snap: snapshot(), t: Date.now() });
+  state.playHead = state.actions.length - 1;
+  state.highlight = meta;
+  // Lock algorithm declaration on first real move
+  if (!state.algoLocked && type !== 'pass') {
+    state.algoLocked = true;
+    updateAlgoUI();
+  }
+  document.getElementById('share-btn').disabled   = false;
+  document.getElementById('analyze-btn').disabled = false;
+  document.getElementById('pass-btn').disabled    = false;
+  document.getElementById('undo-btn').disabled    = false;
+  renderLog();
+  updatePlaybackBtns();
+}
+
+function markPass() {
+  const passNum = state.actions.filter(a => a.type === 'pass').length + 1;
+  recordAction(`── End of Pass ${passNum} ──`, 'pass');
+  document.getElementById('pass-btn').disabled = true;
+}
+
+function undoLast() {
+  if (state.actions.length === 0) return;
+  state.actions.pop();
+  if (state.actions.length === 0) {
+    state.array     = [...state.initial];
+    state.temp      = null;
+    resetScratch();
+    state.copies    = 0;
+    state.swaps     = 0;
+    state.playHead  = -1;
+    state.highlight = null;
+    document.getElementById('undo-btn').disabled    = true;
+    document.getElementById('share-btn').disabled   = true;
+    document.getElementById('analyze-btn').disabled = true;
+    document.getElementById('pass-btn').disabled    = true;
+  } else {
+    state.playHead = state.actions.length - 1;
+    const a = state.actions[state.playHead];
+    state.array     = [...a.snap.array];
+    state.temp      = a.snap.temp;
+    state.scratch   = [...a.snap.scratch];
+    state.copies    = a.snap.copies ?? 0;
+    state.swaps     = a.snap.swaps  ?? 0;
+    state.highlight = a.meta;
+    // re-enable pass only if last action was a move (not another pass marker)
+    document.getElementById('pass-btn').disabled = a.type === 'pass';
+  }
+  render();
+}
+
+// ═══════════════════════════════════════════════════════
+//  Render
+// ═══════════════════════════════════════════════════════
+const ALGO_LABELS = {
+  bubble: 'Bubble Sort', insertion: 'Insertion Sort', selection: 'Selection Sort',
+  merge: 'Merge Sort', quick: 'Quick Sort', counting: 'Counting Sort', radix: 'Radix Sort',
+};
+
+const ALGO_USES_SCRATCH = {
+  bubble: false, insertion: false, selection: false, quick: false,
+  merge: true, counting: true, radix: true,
+};
+const ALGO_USES_TEMP = {
+  bubble: true, insertion: true, selection: true, quick: true,
+  merge: false, counting: false, radix: false,
+};
+
+function updateAlgoUI() {
+  const sel   = document.getElementById('algo-select');
+  const note  = document.getElementById('algo-lock-note');
+  const badge = document.getElementById('algo-badge');
+  sel.disabled  = state.algoLocked;
+  sel.className = state.algorithm ? 'declared' : '';
+  note.textContent = state.algoLocked ? '🔒 locked — reset to change' : '';
+  badge.textContent = state.algorithm ? ALGO_LABELS[state.algorithm] : '';
+
+  const advisory = document.getElementById('algo-advisory');
+  const isCounting = state.algorithm === 'counting' || state.algorithm === 'radix';
+  advisory.textContent = (isCounting && !state.hasDuplicates)
+    ? 'ℹ Counting sort works best with duplicate values (Range < N)'
+    : '';
+  document.getElementById('show-tags-cb').checked = state.showTags;
+
+  // Show/collapse scratch based on whether the declared algorithm needs it
+  const scratchSection = document.getElementById('scratch-section');
+  const scratchNote    = document.getElementById('scratch-unavail-note');
+  const scratchHint    = document.getElementById('scratch-hint');
+  const needsScratch   = !state.algorithm || ALGO_USES_SCRATCH[state.algorithm];
+
+  if (needsScratch) {
+    scratchSection.classList.remove('scratch-unavailable');
+    scratchNote.textContent = '';
+    scratchHint.style.display = '';
+  } else {
+    scratchSection.classList.add('scratch-unavailable');
+    scratchNote.textContent = ` — not used by ${ALGO_LABELS[state.algorithm]}`;
+    scratchHint.style.display = 'none';
+  }
+
+  // Show/collapse temp based on whether the declared algorithm needs it
+  const tempSection = document.getElementById('temp-section');
+  const needsTemp   = !state.algorithm || ALGO_USES_TEMP[state.algorithm];
+  tempSection.classList.toggle('temp-unavailable', !needsTemp);
+}
+
+function render() {
+  renderArraySlots('array-slots', state.array, 'array');
+  renderTempSlot();
+  renderScratchSlots();
+  renderLog();
+  updatePlaybackBtns();
+  updateAlgoUI();
+  document.getElementById('copies-badge').textContent =
+    (state.swaps > 0 || state.copies > 0)
+      ? [state.swaps  > 0 ? `${state.swaps} swaps` : '',
+         state.copies > 0 ? `${state.copies} copies` : '']
+        .filter(Boolean).join('  ·  ')
+      : '';
+}
+
+function makeCard(raw, ghost = false) {
+  const c = document.createElement('div');
+  const counted = isCard(raw) && (raw.counted || raw.placed);
+  c.className = 'card' + (ghost ? ' ghost' : '') + (counted ? ' counted' : '');
+  const num = isGhost(raw) ? raw.v : (isCard(raw) ? raw.v : raw);
+  const tag = (isGhost(raw) || isCard(raw)) ? (raw.tag || '') : '';
+  c.innerHTML = (state.showTags && tag)
+    ? `${num}<span class="card-tag">${tag}</span>`
+    : `${num}`;
+  c.draggable = !ghost && !counted;
+  return c;
+}
+
+function makeSlot(zone, idx) {
+  const s = document.createElement('div');
+  s.dataset.zone = zone;
+  s.dataset.index = idx;
+
+  let cls = 'slot';
+  const hl = state.highlight;
+  if (hl) {
+    const isFrom = hl.fromZone === zone && hl.fromIdx === idx;
+    const isTo   = hl.toZone   === zone && hl.toIdx   === idx;
+    if (isFrom) cls += ' hl-from';
+    if (isTo)   cls += ' hl-to';
+  }
+  s.className = cls;
+
+  s.addEventListener('dragover',  onDragOver);
+  s.addEventListener('dragleave', onDragLeave);
+  s.addEventListener('drop',      onDrop);
+  return s;
+}
+
+function attachCardDrag(card, zone, idx, rawValue) {
+  card.addEventListener('dragstart', e => {
+    drag = { value: rawValue, zone, idx };
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  card.addEventListener('dragend', () => card.classList.remove('dragging'));
+}
+
+function renderArraySlots(containerId, arr, zone) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  arr.forEach((raw, i) => {
+    const slot = makeSlot(zone, i);
+    if (raw !== null) {
+      const g       = isGhost(raw);
+      const counted = isCard(raw) && raw.counted;
+      const card    = makeCard(raw, g);
+      if (!g && !counted) attachCardDrag(card, zone, i, raw);
+      slot.appendChild(card);
+    }
+    container.appendChild(slot);
+  });
+  document.getElementById('array-label-extra').textContent =
+    `[${state.initial.map(v => cardLabel(v)).join(', ')}]`;
+}
+
+function renderTempSlot() {
+  const container = document.getElementById('temp-slot');
+  container.innerHTML = '';
+  const slot = makeSlot('temp', 0);
+  const raw = state.temp;
+  if (raw !== null) {
+    const g    = isGhost(raw);
+    const card = makeCard(raw, g);
+    if (!g) attachCardDrag(card, 'temp', 0, raw);
+    slot.appendChild(card);
+  }
+  container.appendChild(slot);
+}
+
+function renderScratchSlots() {
+  const container = document.getElementById('scratch-slots');
+  container.innerHTML = '';
+  state.scratch.forEach((raw, i) => {
+    if (isCounter(raw)) {
+      // Counting sort mode: render as tally counter, not a card slot
+      const div = document.createElement('div');
+      div.className = 'counter-slot' + (i === 0 ? ' unused' : '') + (raw.count > 0 ? ' has-count' : '');
+      div.dataset.zone  = 'scratch';
+      div.dataset.index = i;
+      div.addEventListener('dragover',  onDragOver);
+      div.addEventListener('dragleave', onDragLeave);
+      div.addEventListener('drop',      onDrop);
+      const idxEl = document.createElement('div');
+      idxEl.className   = 'counter-idx';
+      idxEl.textContent = i === 0 ? '(unused)' : `slot ${i}`;
+      const valEl = document.createElement('div');
+      valEl.className   = 'counter-val';
+      valEl.textContent = raw.count;
+      div.appendChild(idxEl);
+      div.appendChild(valEl);
+      // Counter slots are draggable when they have a count > 0 (reconstruct phase)
+      if (raw.count > 0 && i > 0) {
+        div.draggable = true;
+        div.style.cursor = 'grab';
+        div.addEventListener('dragstart', e => {
+          drag = { value: { counter: true, v: i, count: raw.count }, zone: 'scratch', idx: i };
+          div.style.opacity = '.5';
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        div.addEventListener('dragend', () => { div.style.opacity = ''; });
+      }
+      container.appendChild(div);
+      return;
+    }
+    const slot = makeSlot('scratch', i);
+    if (raw !== null) {
+      const g    = isGhost(raw);
+      const card = makeCard(raw, g);
+      if (!g) attachCardDrag(card, 'scratch', i, raw);
+      slot.appendChild(card);
+    }
+    container.appendChild(slot);
+  });
+
+  // "+" button to add a scratch slot
+  const addBtn = document.createElement('button');
+  addBtn.className = 'add-slot-btn';
+  addBtn.textContent = '+';
+  addBtn.title = 'Add scratch slot';
+  addBtn.addEventListener('click', () => {
+    state.scratch.push(null);
+    state.scratchSize = state.scratch.length;
+    render();
+  });
+  container.appendChild(addBtn);
+}
+
+function renderLog() {
+  const log = document.getElementById('move-log');
+  if (state.actions.length === 0) {
+    log.innerHTML = '<div class="log-entry" style="color:var(--muted)">No moves yet.</div>';
+    return;
+  }
+  log.innerHTML = '';
+  state.actions.forEach((a, i) => {
+    const el = document.createElement('div');
+    el.className = 'log-entry'
+      + (a.type === 'pass' ? ' pass-marker' : '')
+      + (i === state.playHead ? ' current' : '');
+    el.textContent = a.type === 'pass' ? a.desc : `#${i + 1}  ${a.desc}`;
+    log.appendChild(el);
+  });
+  // Scroll within the log container only — avoid scrollIntoView which bubbles up to page scroll
+  const cur = log.querySelector('.current');
+  if (cur) log.scrollTop = cur.offsetTop - log.clientHeight / 2 + cur.offsetHeight / 2;
+}
+
+// ═══════════════════════════════════════════════════════
+//  Drag & Drop handlers
+// ═══════════════════════════════════════════════════════
+function isLockedSlot(zone, idx) {
+  if (zone !== 'array') return false;
+  if (state.algorithm !== 'counting' && state.algorithm !== 'radix') return false;
+  const raw = getRaw(zone, idx);
+  return isCard(raw) && (raw.counted || raw.placed);
+}
+
+function onDragOver(e) {
+  if (isLockedSlot(this.dataset.zone, parseInt(this.dataset.index))) {
+    e.dataTransfer.dropEffect = 'none';
+    return;  // don't preventDefault — tells browser drop is not allowed here
+  }
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  this.classList.add('over');
+  const destVal = getVal(this.dataset.zone, parseInt(this.dataset.index));
+  if (state.shiftMode && destVal !== null) this.classList.add('shift-target');
+}
+function onDragLeave() { this.classList.remove('over', 'shift-target'); }
+
+function onDrop(e) {
+  e.preventDefault();
+  this.classList.remove('over');
+  if (drag.value === null) return;
+
+  const toZone = this.dataset.zone;
+  const toIdx  = parseInt(this.dataset.index);
+
+  // Reject drops onto locked (counted/placed) array slots
+  if (isLockedSlot(toZone, toIdx)) {
+    drag = { value: null, zone: null, idx: null };
+    return;
+  }
+
+  // Self-drop is a no-op
+  if (drag.zone === toZone && drag.idx === toIdx) {
+    drag = { value: null, zone: null, idx: null };
+    return;
+  }
+
+  // Get current value at destination
+  const destVal = getVal(toZone, toIdx);
+  const srcVal  = drag.value;
+  const fromZone = drag.zone;
+  const fromIdx  = parseInt(drag.idx);
+
+  // Don't allow drop onto a card in temp if temp already occupied
+  // (the slot IS the card's parent, so dropping on slot = swap/place)
+
+  // ── Counting sort counter model ──────────────────────
+  const isCounting = state.algorithm === 'counting' || state.algorithm === 'radix';
+  if (isCounting && toZone === 'scratch' && isCounter(getRaw(toZone, toIdx))) {
+    const counter = state.scratch[toIdx];
+    if (fromZone === 'array' && isCard(srcVal)) {
+      if (srcVal.v !== toIdx) {
+        // Wrong slot — red flash the counter div and reject
+        const el = document.querySelector(`#scratch-slots [data-index="${toIdx}"]`);
+        if (el) { el.classList.remove('flash-red-slot'); void el.offsetWidth; el.classList.add('flash-red-slot'); }
+        drag = { value: null, zone: null, idx: null };
+        return;
+      }
+      // Correct slot — tally up, mark card as counted, leave it in place, green-flash it
+      counter.count += 1;
+      state.array[fromIdx] = { ...srcVal, counted: true };
+      // When every card has been counted, clear the array so the output phase can fill it
+      const allCounted = state.array.every(c => isCard(c) && c.counted);
+      if (allCounted) state.array = Array(state.n).fill(null);
+      const cardEl = document.querySelector(`#array-slots [data-index="${fromIdx}"] .card`);
+      if (cardEl) { cardEl.classList.remove('flash-green'); void cardEl.offsetWidth; cardEl.classList.add('flash-green'); }
+      const desc = `Count: array[${fromIdx}]=${cardLabel(srcVal)} → scratch[${toIdx}]  (tally=${counter.count})`;
+      recordAction(desc, 'count', { fromZone, fromIdx, toZone, toIdx });
+      drag = { value: null, zone: null, idx: null };
+      render();
+      return;
+    }
+  }
+  if (isCounting && fromZone === 'scratch' && isCounter(getRaw(fromZone, fromIdx))) {
+    // Reconstruct: drag FROM counter slot → array places value, decrements count
+    const counter = state.scratch[fromIdx];
+    if (counter.count <= 0) { drag = { value: null, zone: null, idx: null }; return; }
+    if (toZone !== 'array') { drag = { value: null, zone: null, idx: null }; return; }
+    const tag = originalTag(fromIdx, counter.outputIdx);
+    counter.count -= 1;
+    counter.outputIdx += 1;
+    setVal(toZone, toIdx, { v: fromIdx, tag, placed: true });
+    const desc = `Output: scratch[${fromIdx}] → array[${toIdx}]=${fromIdx}${tag}  (remaining=${counter.count})`;
+    recordAction(desc, 'move', { fromZone, fromIdx, toZone, toIdx });
+    drag = { value: null, zone: null, idx: null };
+    render();
+    return;
+  }
+
+  let desc, actionType;
+  const meta = { fromZone, fromIdx, toZone, toIdx };
+
+  // getRaw so we can detect ghost destinations (getVal returns null for both empty and ghost)
+  const rawDest      = getRaw(toZone, toIdx);
+  const destIsGhost  = isGhost(rawDest);
+  const destRealVal  = destIsGhost ? null : destVal; // real value at dest, or null
+  const fromArrayLike = fromZone === 'array' || fromZone === 'scratch';
+
+  const fromGhostable = fromArrayLike || fromZone === 'temp';
+
+  const srcLabel  = cardLabel(srcVal);
+  const destLabel = destRealVal !== null ? cardLabel(destRealVal) : null;
+
+  if (state.shiftMode) {
+    state.copies += 1;
+    setVal(toZone, toIdx, srcVal);
+    setVal(fromZone, fromIdx, fromGhostable ? makeGhost(srcVal) : null);
+    desc = destLabel !== null
+      ? `Shift: ${fromZone}[${fromIdx}]=${srcLabel} → ${toZone}[${toIdx}] (overwrote ${destLabel})  (+1 copy)`
+      : `Shift: ${fromZone}[${fromIdx}]=${srcLabel} → ${toZone}[${toIdx}]  (+1 copy)`;
+    actionType = 'shift';
+  } else if (destVal !== null) {
+    state.copies += 2;
+    state.swaps  += 1;
+    setVal(toZone, toIdx, srcVal);
+    setVal(fromZone, fromIdx, destVal);
+    desc       = `Swap: ${fromZone}[${fromIdx}]=${srcLabel} ↔ ${toZone}[${toIdx}]=${cardLabel(destVal)}  (+2 copies)`;
+    actionType = 'swap';
+  } else {
+    state.copies += 1;
+    setVal(toZone, toIdx, srcVal);
+    const leavingGhost = (toZone === 'temp' && fromArrayLike) || fromZone === 'temp';
+    setVal(fromZone, fromIdx, leavingGhost ? makeGhost(srcVal) : null);
+    desc       = `Move: ${srcLabel} → ${toZone}[${toIdx}]  (+1 copy)`;
+    actionType = 'move';
+  }
+
+  recordAction(desc, actionType, meta);
+  drag = { value: null, zone: null, idx: null };
+  render();
+}
+
+function isGhost(v)    { return v !== null && typeof v === 'object' && v.ghost === true; }
+function isCounter(v)  { return v !== null && typeof v === 'object' && v.counter === true; }
+function ghostVal(v)   { return v.v; }
+function isCard(v)     { return v !== null && typeof v === 'object' && !v.ghost && !v.counter; }
+function cardNum(v)    { if (v === null) return null; if (isGhost(v)) return v.v; if (isCard(v)) return v.v; return v; }
+function cardLabel(v)  { if (v == null) return '·'; if (typeof v === 'number') return `${v}`; if (isGhost(v)) return v.v != null ? `(${v.v}${v.tag||''})` : '(·)'; return v.v != null ? `${v.v}${v.tag||''}` : '·'; }
+function makeGhost(src){ return { ghost: true, v: src.v, tag: src.tag || '' }; }
+// Returns the tag of the nth (0-based) original card with the given value, for stable output.
+function originalTag(value, nth) {
+  let seen = 0;
+  for (const card of state.initial) {
+    if (card.v === value) { if (seen === nth) return card.tag || ''; seen++; }
+  }
+  return '';
+}
+// Migrate a value from old plain-number format to card object (for loaded sessions).
+// Returns null for any unrecognised or invalid value.
+function migrateCard(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return { v, tag: '' };
+  if (typeof v === 'object') {
+    if (v.counter) return v;                                                          // counter slot — pass through
+    if (v.ghost) return typeof v.v === 'number' ? { ghost: true, v: v.v, tag: v.tag || '' } : null;
+    if (typeof v.v === 'number') return { v: v.v, tag: v.tag || '' };
+  }
+  return null;
+}
+
+// getRaw returns the stored value including ghost objects
+function getRaw(zone, idx) {
+  if (zone === 'array')   return state.array[idx];
+  if (zone === 'temp')    return state.temp;
+  if (zone === 'scratch') return state.scratch[idx];
+  return null;
+}
+
+// getVal treats ghost and counter slots as empty (null) for normal drag/swap logic
+function getVal(zone, idx) {
+  const raw = getRaw(zone, idx);
+  return (isGhost(raw) || isCounter(raw)) ? null : raw;
+}
+
+function setVal(zone, idx, val) {
+  if (zone === 'array')   state.array[idx]   = val;
+  if (zone === 'temp')    state.temp          = val;
+  if (zone === 'scratch') state.scratch[idx]  = val;
+}
+
+// ═══════════════════════════════════════════════════════
+//  Check correctness
+// ═══════════════════════════════════════════════════════
+function checkSort() {
+  const allInArray = (state.temp === null || isGhost(state.temp))
+    && state.scratch.every(v => v === null || isGhost(v) || (isCounter(v) && v.count === 0));
+  if (!allInArray) {
+    setStatus('Values still in temp/scratch — move everything back to the array first.', 'fail');
+    return;
+  }
+  const incomplete = state.array.some(v => v === null || isGhost(v));
+  if (incomplete) {
+    setStatus('Array has empty or ghost slots — resolve all values before checking.', 'fail');
+    return;
+  }
+  const nums    = state.array.map(cardNum);
+  const sorted  = [...nums].sort((a, b) => a - b);
+  const correct = nums.every((v, i) => v === sorted[i]);
+  if (!correct) {
+    setStatus('✘ Not sorted yet. Keep going!', 'fail');
+    return;
+  }
+  if (!state.hasDuplicates) {
+    setStatus('✔ Correct! Array is sorted.', 'ok');
+    return;
+  }
+  // Stability check: for each value, letter tags must remain in original order (A before B etc.)
+  let stable = true;
+  const lastSeen = {};
+  for (const card of state.array) {
+    const v = card.v, t = card.tag || '';
+    if (lastSeen[v] && t < lastSeen[v]) { stable = false; break; }
+    lastSeen[v] = t;
+  }
+  if (stable) {
+    setStatus('✔ Sorted correctly and stably — equal elements kept their original order.', 'ok');
+  } else {
+    setStatus('✔ Sorted correctly but NOT stably — equal elements were reordered.', 'warn');
+  }
+}
+
+function setStatus(msg, cls) {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.className   = cls;
+}
+
+// ═══════════════════════════════════════════════════════
+//  Playback
+// ═══════════════════════════════════════════════════════
+function updatePlaybackBtns() {
+  const n = state.actions.length;
+  const h = state.playHead;
+  document.getElementById('start-btn').disabled = h < 0;
+  document.getElementById('prev-btn').disabled  = h < 0;
+  document.getElementById('next-btn').disabled  = h >= n - 1;
+  document.getElementById('end-btn').disabled   = h >= n - 1;
+  document.getElementById('play-btn').disabled  = n === 0;
+  document.getElementById('step-counter').textContent =
+    n > 0 ? `${Math.max(0, h + 1)} / ${n}` : '';
+}
+
+function jumpToStart() {
+  stopPlay();
+  state.array        = [...state.initial];
+  state.temp         = null;
+  state.scratch      = Array(state.scratchSize).fill(null);
+  state.copies       = 0;
+  state.swaps        = 0;
+  state.playHead     = -1;
+  state.highlight    = null;
+  state.transitioning = false;
+  clearArrow();
+  render();
+}
+
+function jumpToEnd() {
+  stopPlay();
+  if (state.actions.length === 0) return;
+  state.transitioning = false;
+  state.playHead = state.actions.length - 1;
+  const a = state.actions[state.playHead];
+  clearArrow();
+  applySnap(a.snap, a.meta);
+}
+
+function applySnap(snap, meta = null) {
+  state.array     = snap.array.map(migrateCard);
+  state.temp      = migrateCard(snap.temp);
+  state.scratch   = snap.scratch.map(migrateCard);
+  state.copies    = snap.copies ?? 0;
+  state.swaps     = snap.swaps  ?? 0;
+  state.highlight = meta;
+  render();
+}
+
+// Returns the state snapshot just BEFORE action at index idx.
+function beforeSnapOf(idx) {
+  if (idx <= 0) {
+    return {
+      array:   [...state.initial],
+      temp:    null,
+      scratch: Array(state.scratchSize).fill(null),
+      copies:  0,
+    };
+  }
+  return state.actions[idx - 1].snap;
+}
+
+// Preview delay: 40% of play interval, capped between 300–600ms.
+function previewDelay() {
+  return Math.min(600, Math.max(300, currentDelay() * 0.4));
+}
+
+function stepNext() {
+  if (state.playHead >= state.actions.length - 1) return;
+  if (state.transitioning) return;
+  state.playHead++;
+  const a = state.actions[state.playHead];
+  updatePlaybackBtns();
+
+  if (a.type === 'pass') { applySnap(a.snap, null); return; }
+
+  // Phase 1 — BEFORE state + highlights + arrow
+  state.transitioning = true;
+  applySnap(beforeSnapOf(state.playHead), a.meta);
+  requestAnimationFrame(() => drawArrow(a.meta));
+
+  // Phase 2 — AFTER state + highlights + arrow (redrawn after DOM rebuild)
+  setTimeout(() => {
+    state.transitioning = false;
+    applySnap(a.snap, a.meta);
+    requestAnimationFrame(() => drawArrow(a.meta));
+  }, previewDelay());
+}
+
+function stepPrev() {
+  if (state.transitioning) return;
+  if (state.playHead <= 0) { jumpToStart(); return; }
+
+  const a = state.actions[state.playHead];
+  state.playHead--;
+  updatePlaybackBtns();
+
+  if (a.type === 'pass') {
+    const prev = state.actions[state.playHead];
+    applySnap(prev.snap, prev.meta);
+    return;
+  }
+
+  // Phase 1 — AFTER state + highlights + arrow
+  state.transitioning = true;
+  applySnap(a.snap, a.meta);
+  requestAnimationFrame(() => drawArrow(a.meta));
+
+  // Phase 2 — BEFORE state + highlights + arrow (redrawn after DOM rebuild)
+  setTimeout(() => {
+    state.transitioning = false;
+    applySnap(beforeSnapOf(state.playHead + 1), a.meta);
+    requestAnimationFrame(() => drawArrow(a.meta));
+  }, previewDelay());
+}
+
+const SPEED_MS = { 1: 2500, 2: 1800, 3: 1200, 4: 700, 5: 350 };
+const SPEED_LABEL = { 1: '¼×', 2: '½×', 3: '1×', 4: '2×', 5: '4×' };
+
+function currentDelay() {
+  return SPEED_MS[document.getElementById('speed-slider').value] ?? 1200;
+}
+
+function stopPlay() {
+  if (state.playTimer) { clearInterval(state.playTimer); state.playTimer = null; }
+  document.getElementById('play-btn').textContent = '▶ Play';
+}
+
+function startPlayTimer() {
+  if (state.playTimer) clearInterval(state.playTimer);
+  state.playTimer = setInterval(() => {
+    if (state.playHead >= state.actions.length - 1) { stopPlay(); return; }
+    stepNext();
+  }, currentDelay());
+}
+
+function togglePlay() {
+  if (state.playTimer) { stopPlay(); return; }
+  if (state.playHead >= state.actions.length - 1) {
+    jumpToStart();
+  }
+  document.getElementById('play-btn').textContent = '⏸ Pause';
+  startPlayTimer();
+}
+
+// ═══════════════════════════════════════════════════════
+//  Share / Session encoding
+// ═══════════════════════════════════════════════════════
+function buildShareURL() {
+  const payload = {
+    v:         2,
+    seed:      state.seed,
+    n:         state.n,
+    range:     state.range,
+    showTags:  state.showTags,
+    algorithm: state.algorithm,
+    copies:    state.copies,
+    swaps:     state.swaps,
+    actions:   state.actions.map(a => ({ desc: a.desc, type: a.type, meta: a.meta, snap: a.snap })),
+  };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  const url = `${location.origin}${location.pathname}?session=${encodeURIComponent(encoded)}`;
+  return url;
+}
+
+function showShare() {
+  const url = buildShareURL();
+  const box = document.getElementById('share-box');
+  const ta  = document.getElementById('share-url');
+  const btn = document.getElementById('share-btn');
+
+  ta.value = url;
+  box.style.display = 'flex';
+
+  // Focus + select so execCommand has a valid selection to work from
+  ta.focus();
+  ta.select();
+
+  // Try modern clipboard API first (works on https/localhost),
+  // fall back to execCommand (works on file://)
+  const didCopy = (navigator.clipboard
+    ? navigator.clipboard.writeText(url).then(() => true).catch(() => {
+        return document.execCommand('copy');
+      })
+    : Promise.resolve(document.execCommand('copy'))
+  );
+
+  didCopy.then(ok => {
+    btn.textContent = ok ? '✔ Copied!' : '🔗 Share (select & copy manually)';
+    setTimeout(() => btn.textContent = '🔗 Share', 2500);
+  });
+}
+
+function loadSession(encoded) {
+  try {
+    const payload = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(encoded)))));
+    document.getElementById('n-input').value    = payload.n;
+    document.getElementById('seed-input').value = payload.seed;
+    const hasDups = payload.range && payload.range < payload.n;
+    document.getElementById('duplicates-cb').checked  = !!hasDups;
+    document.getElementById('range-label').style.display = hasDups ? '' : 'none';
+    document.getElementById('range-input').value = hasDups ? payload.range : '';
+
+    newPuzzle(payload.seed);  // sets initial state
+
+    // Sessions saved before v2 used plain integers in snapshots (pre-card-object model).
+    // Load the seed/puzzle but skip replaying moves to avoid displaying corrupt state.
+    if ((payload.v ?? 1) < 2) {
+      setStatus('Session format is outdated — puzzle loaded from seed, moves not replayed.', '');
+      render();
+      return;
+    }
+
+    // Restore tag visibility
+    state.showTags = payload.showTags ?? false;
+    document.getElementById('show-tags-cb').checked = state.showTags;
+
+    // Restore declared algorithm
+    if (payload.algorithm) {
+      state.algorithm  = payload.algorithm;
+      state.algoLocked = true;
+      document.getElementById('algo-select').value = payload.algorithm;
+    }
+
+    // Rebuild actions array and advance play head to end
+    state.actions  = payload.actions.map(a => ({ ...a, t: 0 }));
+    state.playHead = -1;
+    document.getElementById('share-btn').disabled   = false;
+    document.getElementById('analyze-btn').disabled = state.actions.length === 0;
+
+    // jump to final state
+    if (state.actions.length > 0) {
+      state.playHead = state.actions.length - 1;
+      applySnap(state.actions[state.playHead].snap);
+    }
+    setStatus('Session loaded — use ◀ Prev / Next ▶ to review.', '');
+    render();
+  } catch (err) {
+    setStatus('Failed to load session from URL.', 'fail');
+    newPuzzle(null);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  Wire up buttons
+// ═══════════════════════════════════════════════════════
+document.getElementById('new-btn').addEventListener('click', () => {
+  document.getElementById('seed-input').value = '';
+  newPuzzle(null);
+});
+document.getElementById('submit-btn').addEventListener('click', checkSort);
+document.getElementById('pass-btn').addEventListener('click', markPass);
+document.getElementById('undo-btn').addEventListener('click', undoLast);
+document.getElementById('shift-btn').addEventListener('click', () => {
+  state.shiftMode = !state.shiftMode;
+  const btn = document.getElementById('shift-btn');
+  btn.textContent = state.shiftMode ? '⇒ Shift' : '⇌ Swap';
+  btn.classList.toggle('shift-active', state.shiftMode);
+});
+document.getElementById('duplicates-cb').addEventListener('change', function() {
+  const rangeLabel = document.getElementById('range-label');
+  const rangeEl    = document.getElementById('range-input');
+  if (this.checked) {
+    rangeLabel.style.display = '';
+    if (isNaN(parseInt(rangeEl.value)) || parseInt(rangeEl.value) >= state.n) {
+      rangeEl.value = Math.max(2, Math.floor(state.n / 2));
+    }
+    state.showTags = true;
+    document.getElementById('show-tags-cb').checked = true;
+  } else {
+    rangeLabel.style.display = 'none';
+    state.showTags = false;
+    document.getElementById('show-tags-cb').checked = false;
+  }
+  newPuzzle(state.seed);
+});
+document.getElementById('show-tags-cb').addEventListener('change', function() {
+  state.showTags = this.checked;
+  render();
+});
+document.getElementById('analyze-btn').addEventListener('click', renderAnalysis);
+document.getElementById('share-btn').addEventListener('click', showShare);
+document.getElementById('reset-btn').addEventListener('click', resetPuzzle);
+document.getElementById('algo-select').addEventListener('change', function() {
+  if (state.algoLocked) return;
+  state.algorithm = this.value || null;
+  // Auto-expand scratch when declaring an algorithm that needs aux space.
+  // Counting/radix: N+1 slots (index 0 unused; value V → slot V).
+  // Merge: N slots (aux array same size as input).
+  const isCounting = state.algorithm === 'counting' || state.algorithm === 'radix';
+
+  // Auto-enable shift mode for insertion sort; disable it when switching away
+  const isInsertion = state.algorithm === 'insertion';
+  state.shiftMode = isInsertion;
+  const shiftBtn = document.getElementById('shift-btn');
+  shiftBtn.textContent = isInsertion ? '⇒ Shift' : '⇌ Swap';
+  shiftBtn.classList.toggle('shift-active', isInsertion);
+
+  // Auto-expand scratch when declaring an algorithm that needs aux space.
+  // Counting/radix: N+1 slots (index 0 unused; value V → slot V).
+  // Merge: N slots (aux array same size as input).
+  // If switching away from counting sort, replace any counter slots with empty slots
+  if (!isCounting && state.scratch.some(isCounter)) {
+    state.scratch     = Array(state.scratchSize).fill(null);
+  }
+  if (state.algorithm && ALGO_USES_SCRATCH[state.algorithm]) {
+    const needed = isCounting ? state.n + 1 : state.n;
+    if (isCounting) {
+      // Always (re)initialize as counter slots so indices match values
+      state.scratch     = Array.from({ length: needed }, (_, i) => ({ counter: true, v: i, count: 0, outputIdx: 0 }));
+      state.scratchSize = needed;
+    } else if (state.scratch.length < needed) {
+      state.scratch     = Array(needed).fill(null);
+      state.scratchSize = needed;
+    }
+  }
+  // For counting/radix: auto-enable duplicates + tags and regenerate immediately.
+  if (isCounting) {
+    const dupCb   = document.getElementById('duplicates-cb');
+    const rangeEl = document.getElementById('range-input');
+    dupCb.checked = true;
+    document.getElementById('range-label').style.display = '';
+    if (isNaN(parseInt(rangeEl.value)) || parseInt(rangeEl.value) >= state.n) {
+      rangeEl.value = Math.max(2, Math.floor(state.n / 2));
+    }
+    state.showTags = true;
+    document.getElementById('show-tags-cb').checked = true;
+    const algoBeforeRegen = state.algorithm;
+    newPuzzle(state.seed);
+    state.algorithm = algoBeforeRegen;
+    document.getElementById('algo-select').value = algoBeforeRegen;
+    // newPuzzle resets scratch to nulls — reinitialize as counter slots
+    const needed = state.n + 1;
+    state.scratch     = Array.from({ length: needed }, (_, i) => ({ counter: true, v: i, count: 0, outputIdx: 0 }));
+    state.scratchSize = needed;
+  }
+  updateAlgoUI();
+  renderScratchSlots();
+});
+document.getElementById('speed-slider').addEventListener('input', function() {
+  document.getElementById('speed-label').textContent = SPEED_LABEL[this.value];
+  if (state.playTimer) startPlayTimer(); // restart at new speed if playing
+});
+document.getElementById('start-btn').addEventListener('click', jumpToStart);
+document.getElementById('prev-btn').addEventListener('click', stepPrev);
+document.getElementById('next-btn').addEventListener('click', stepNext);
+document.getElementById('end-btn').addEventListener('click', jumpToEnd);
+document.getElementById('play-btn').addEventListener('click', togglePlay);
+
+// ═══════════════════════════════════════════════════════
+//  Arrow overlay
+// ═══════════════════════════════════════════════════════
+function slotElement(zone, idx) {
+  return document.querySelector(`.slot[data-zone="${zone}"][data-index="${idx}"]`);
+}
+
+function drawArrow(meta) {
+  const path = document.getElementById('arrow-path');
+  if (!meta) { path.setAttribute('stroke', 'transparent'); return; }
+
+  const fromEl = slotElement(meta.fromZone, meta.fromIdx);
+  const toEl   = slotElement(meta.toZone,   meta.toIdx);
+  if (!fromEl || !toEl) { path.setAttribute('stroke', 'transparent'); return; }
+
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+  const x1 = fr.left + fr.width  / 2;
+  const y1 = fr.top  + fr.height * 0.78;
+  const x2 = tr.left + tr.width  / 2;
+  const y2 = tr.top  + tr.height * 0.78;
+
+  // Curved path — control point offset perpendicular to the line
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+  const curve = Math.min(80, len * 0.45);
+  const cx = (x1 + x2) / 2 - (dy / len) * curve;
+  const cy = (y1 + y2) / 2 + (dx / len) * curve;
+
+  const isSwap  = meta.fromZone === meta.toZone
+                  ? meta.fromIdx !== meta.toIdx
+                  : true;
+  const color   = (meta.fromZone === meta.toZone && isSwap) ? '#c070f0'  // swap = purple
+                : meta.toZone === 'temp'                    ? '#f0a030'  // into temp = amber
+                :                                             '#50c878'; // into array/scratch = green
+
+  // Update marker fill to match stroke colour via CSS custom property trick:
+  // simplest approach — inline fill on the marker paths
+  document.querySelectorAll('#arrow-overlay marker path').forEach(p => p.setAttribute('fill', color));
+
+  path.setAttribute('d', `M${x1},${y1} Q${cx},${cy} ${x2},${y2}`);
+  path.setAttribute('stroke', color);
+}
+
+function clearArrow() {
+  document.getElementById('arrow-path').setAttribute('stroke', 'transparent');
+  document.querySelectorAll('#arrow-overlay marker path').forEach(p => p.setAttribute('fill', 'transparent'));
+}
+
+// ═══════════════════════════════════════════════════════
+//  Algorithm Analysis Engine
+// ═══════════════════════════════════════════════════════
+
+// Detects 3-step manual temp-swaps: array[p]→temp, array[q]→array[p], temp→array[q].
+// Works regardless of action type (move or shift). Returns consumed action indices so
+// scorers can exclude them from other signals (e.g. shift mode shouldn't disqualify bubble).
+function detectManualSwaps(actions) {
+  const result = [];
+  const used   = new Set();
+
+  for (let i = 0; i < actions.length; i++) {
+    if (used.has(i) || !actions[i].meta) continue;
+
+    // Find next two non-pass, non-used real actions
+    let j = i + 1;
+    while (j < actions.length && (actions[j].type === 'pass' || used.has(j) || !actions[j].meta)) j++;
+    if (j >= actions.length) continue;
+
+    let k = j + 1;
+    while (k < actions.length && (actions[k].type === 'pass' || used.has(k) || !actions[k].meta)) k++;
+    if (k >= actions.length) continue;
+
+    const a1 = actions[i], a2 = actions[j], a3 = actions[k];
+
+    if (a1.meta.fromZone !== 'array' || a1.meta.toZone !== 'temp')  continue;
+    if (a2.meta.fromZone !== 'array' || a2.meta.toZone !== 'array') continue;
+    if (a3.meta.fromZone !== 'temp'  || a3.meta.toZone !== 'array') continue;
+
+    const p = a1.meta.fromIdx;  // value saved to temp came from here
+    const q = a2.meta.fromIdx;  // value being shifted came from here
+
+    if (a2.meta.toIdx !== p) continue;  // step 2 must land at p
+    if (a3.meta.toIdx !== q) continue;  // step 3 must land at q (completing the swap)
+
+    result.push({
+      fromIdx: p,
+      toIdx:   q,
+      adjacent: Math.abs(p - q) === 1,
+      actionIndices: [i, j, k],
+    });
+    used.add(i); used.add(j); used.add(k);
+  }
+
+  return result;
+}
+
+// Returns the real integer value stored in a snapshot position (unwraps ghosts and card objects).
+function snapVal(snap, zone, idx) {
+  let raw;
+  if (zone === 'array')        raw = snap.array[idx];
+  else if (zone === 'temp')    raw = snap.temp;
+  else if (zone === 'scratch') raw = snap.scratch[idx];
+  else return null;
+  return cardNum(raw);
+}
+
+function scoreBubble(actions, n) {
+  const real  = actions.filter(a => a.type !== 'pass');
+  const notes = [];
+
+  if (real.length === 0) return { score: 0, notes: ['No moves recorded'] };
+
+  // Detect manual temp-swap triplets first so we don't penalise them
+  const manualSwaps = detectManualSwaps(actions);
+  const manualIds   = new Set(manualSwaps.flatMap(s => s.actionIndices));
+
+  // Shifts NOT consumed by a manual-swap triplet are a real disqualifier
+  const bareShifts = actions.filter((a, i) => a.type === 'shift' && !manualIds.has(i));
+  if (bareShifts.length > 0) {
+    return { score: 0, notes: [`✗ ${bareShifts.length} shift action(s) not part of a temp-swap — incompatible with bubble sort`] };
+  }
+
+  // Combine direct drag-swaps and manual temp-swaps into one pool
+  const directSwaps = actions
+    .map((a, i) => ({ a, i }))
+    .filter(({ a }) => a.type === 'swap')
+    .map(({ a }) => ({
+      fromIdx:  a.meta.fromIdx,
+      toIdx:    a.meta.toIdx,
+      adjacent: a.meta.fromZone === 'array' && a.meta.toZone === 'array' &&
+                Math.abs(a.meta.fromIdx - a.meta.toIdx) === 1,
+    }));
+
+  const allSwaps = [...directSwaps, ...manualSwaps];
+
+  if (allSwaps.length === 0) {
+    return { score: 0.05, notes: ['✗ No swap actions detected (direct or via temp)'] };
+  }
+
+  const adjSwaps = allSwaps.filter(s => s.adjacent);
+  const ratio    = adjSwaps.length / allSwaps.length;
+
+  let score = 0;
+  if (ratio === 1) {
+    score += 0.90;  // perfect adjacency is the definitive bubble sort signal
+    const parts = [];
+    if (directSwaps.length) parts.push(`${directSwaps.length} direct`);
+    if (manualSwaps.length) parts.push(`${manualSwaps.length} via temp`);
+    notes.push(`✓ All ${allSwaps.length} swap(s) adjacent (${parts.join(', ')})`);
+  } else if (ratio >= 0.6) {
+    score += ratio * 0.7;
+    notes.push(`${adjSwaps.length}/${allSwaps.length} swaps adjacent (${Math.round(ratio*100)}%)`);
+  } else {
+    score += ratio * 0.4;
+    notes.push(`✗ Only ${adjSwaps.length}/${allSwaps.length} swaps adjacent`);
+  }
+
+  const passes = actions.filter(a => a.type === 'pass');
+  if (passes.length > 0) { score += 0.10; notes.push(`✓ ${passes.length} pass marker(s) annotated`); }
+
+  const scratchUsed = real.some(a => a.meta && (a.meta.toZone === 'scratch' || a.meta.fromZone === 'scratch'));
+  if (scratchUsed) { score -= 0.2; notes.push('✗ Scratch area used (unexpected for bubble sort)'); }
+  if (manualSwaps.length > 0) notes.push(`ℹ ${manualSwaps.length} swap(s) implemented manually via temp variable`);
+
+  return { score: Math.max(0, Math.min(1, score)), notes };
+}
+
+function scoreInsertion(actions, n) {
+  const real  = actions.filter(a => a.type !== 'pass');
+  const notes = [];
+
+  if (real.length === 0) return { score: 0, notes: ['No moves recorded'] };
+
+  const scratchUsed = real.some(a => a.meta && (a.meta.toZone === 'scratch' || a.meta.fromZone === 'scratch'));
+
+  // Exclude shifts that are just manual swap triplets — those aren't insertion sort signals
+  const manualSwaps = detectManualSwaps(actions);
+  const manualIds   = new Set(manualSwaps.flatMap(s => s.actionIndices));
+  const bareShifts  = actions.filter((a, i) => a.type === 'shift' && !manualIds.has(i));
+  const allShifts   = actions.filter(a => a.type === 'shift');
+
+  if (bareShifts.length === 0) {
+    // No real insertion-sort shifts — check for adjacent-swap fallback
+    const swaps = actions.filter(a => a.type === 'swap');
+    const adjSwaps = swaps.filter(a =>
+      a.meta.fromZone === 'array' && a.meta.toZone === 'array' &&
+      Math.abs(a.meta.fromIdx - a.meta.toIdx) === 1
+    );
+    if (adjSwaps.length > 0 && adjSwaps.length === swaps.length && !scratchUsed) {
+      notes.push('Adjacent swaps only — insertion sort possible but shift mode gives stronger evidence');
+      return { score: 0.3, notes };
+    }
+    if (allShifts.length > 0) {
+      notes.push('Shift actions present but all were part of manual swap patterns — not an insertion sort signal');
+    } else {
+      notes.push('✗ No shift actions — enable Shift mode when demonstrating insertion sort');
+    }
+    return { score: 0.05, notes };
+  }
+
+  let score = 0.5;
+  notes.push(`✓ ${bareShifts.length} insertion-style shift action(s)`);
+
+  const adjBareShifts = bareShifts.filter(a =>
+    a.meta.fromZone === 'array' && a.meta.toZone === 'array' &&
+    Math.abs(a.meta.fromIdx - a.meta.toIdx) === 1
+  );
+  if (adjBareShifts.length > 0) {
+    score += 0.2;
+    notes.push(`✓ ${adjBareShifts.length} adjacent array-to-array shift(s) (sliding elements to make room)`);
+  }
+
+  // Temp used for the "key" element being placed (move OR shift to temp — shift mode also valid)
+  const extraTempMoves = actions.filter((a, i) =>
+    !manualIds.has(i) && (a.type === 'move' || a.type === 'shift') &&
+    a.meta && a.meta.toZone === 'temp'
+  );
+  if (extraTempMoves.length > 0) {
+    score += 0.2;
+    notes.push(`✓ Temp used ${extraTempMoves.length} time(s) to hold the element being inserted`);
+  }
+
+  if (scratchUsed) { score -= 0.2; notes.push('✗ Scratch used (unusual for insertion sort)'); }
+
+  const passes = actions.filter(a => a.type === 'pass');
+  if (passes.length > 0) { score += 0.1; notes.push(`✓ ${passes.length} pass marker(s) annotated`); }
+
+  return { score: Math.max(0, Math.min(1, score)), notes };
+}
+
+function scoreSelection(actions, initial, n) {
+  const real   = actions.filter(a => a.type !== 'pass');
+  const swaps  = actions.filter(a => a.type === 'swap');
+  const shifts = actions.filter(a => a.type === 'shift');
+  const notes  = [];
+
+  if (real.length === 0) return { score: 0, notes: ['No moves recorded'] };
+  if (shifts.length > 0) return { score: 0, notes: ['✗ Shift actions present — incompatible with selection sort'] };
+
+  const scratchUsed = real.some(a => a.meta && (a.meta.toZone === 'scratch' || a.meta.fromZone === 'scratch'));
+  if (scratchUsed) return { score: 0.05, notes: ['✗ Scratch used — selection sort needs no auxiliary storage'] };
+
+  // Count both direct swaps and manual temp-based swaps
+  const manualSwaps = detectManualSwaps(actions);
+  const manualIds   = new Set(manualSwaps.flatMap(s => s.actionIndices));
+  const directSwaps = actions.filter(a => a.type === 'swap');
+  const totalSwapCount = directSwaps.length + manualSwaps.length;
+
+  if (totalSwapCount === 0) return { score: 0.05, notes: ['✗ No swaps recorded (direct or via temp)'] };
+
+  let score = 0;
+
+  if (totalSwapCount <= n - 1) {
+    score += 0.65;
+    const parts = [];
+    if (directSwaps.length) parts.push(`${directSwaps.length} direct`);
+    if (manualSwaps.length) parts.push(`${manualSwaps.length} via temp`);
+    notes.push(`✓ Swap count (${totalSwapCount}) ≤ N-1 (${n-1}) [${parts.join(', ')}]`);
+    if (totalSwapCount === n - 1) { score += 0.05; notes.push('✓ Exactly N-1 swaps (classic selection sort)'); }
+  } else {
+    notes.push(`✗ Swap count (${totalSwapCount}) > N-1 (${n-1})`);
+    score += 0.1;
+  }
+
+  // Non-adjacent swaps (expected for selection sort when swapping with the minimum)
+  const allSwapPairs = [
+    ...directSwaps.map(a => ({ fromIdx: a.meta.fromIdx, toIdx: a.meta.toIdx })),
+    ...manualSwaps,
+  ];
+  const nonAdj = allSwapPairs.filter(s => Math.abs(s.fromIdx - s.toIdx) > 1);
+  if (nonAdj.length > 0) {
+    score += 0.15;
+    notes.push(`✓ ${nonAdj.length} non-adjacent swap(s) (swapping with minimum element)`);
+  }
+
+  // Verify each swap progressively settles a front element
+  const sorted = [...initial].map(cardNum).sort((a, b) => a - b);
+  const swapSnaps = [
+    ...directSwaps.map(a => a.snap),
+    ...manualSwaps.map(s => actions[s.actionIndices[2]].snap),
+  ];
+  let settledSwaps = 0;
+  for (let i = 0; i < swapSnaps.length; i++) {
+    const arr = swapSnaps[i].array;
+    // Left-to-right: min-selection variant — front k elements match sorted
+    let kL = 0;
+    while (kL < arr.length && !isGhost(arr[kL]) && cardNum(arr[kL]) === sorted[kL]) kL++;
+    // Right-to-left: max-selection variant — back k elements match sorted
+    let kR = arr.length - 1;
+    while (kR >= 0 && !isGhost(arr[kR]) && cardNum(arr[kR]) === sorted[kR]) kR--;
+    const settledFromRight = arr.length - 1 - kR;
+    if (kL >= i + 1 || settledFromRight >= i + 1) settledSwaps++;
+  }
+  if (settledSwaps === swapSnaps.length) {
+    score += 0.1;
+    notes.push('✓ Each swap progressively settled the next element into its final position');
+  }
+
+  const passes = actions.filter(a => a.type === 'pass');
+  if (passes.length > 0) { score += 0.05; notes.push(`✓ ${passes.length} pass marker(s) annotated`); }
+
+  return { score: Math.max(0, Math.min(1, score)), notes };
+}
+
+function scoreCounting(actions, n) {
+  const real  = actions.filter(a => a.type !== 'pass');
+  const notes = [];
+
+  if (real.length === 0) return { score: 0, notes: ['No moves recorded'] };
+
+  // Primary signal: type:'count' actions — drag array[i]=V to scratch[V] to tally
+  const countActions = real.filter(a => a.type === 'count');
+  // Legacy signal: type:'move' to scratch where value matches slot index (pre-M10 model)
+  const legacyToScratch = real.filter(a => a.type !== 'count' && a.meta && a.meta.toZone === 'scratch');
+
+  let score = 0;
+
+  if (countActions.length > 0) {
+    // New counter model: every count action is by definition correct (wrong-slot drops are rejected)
+    score += 0.65;
+    notes.push(`✓ ${countActions.length} tally actions recorded (count phase)`);
+
+    // Output phase: type:'move' from scratch in ascending index order
+    const outputActions = real.filter(a => a.type === 'move' && a.meta && a.meta.fromZone === 'scratch');
+    if (outputActions.length > 0) {
+      const indices = outputActions.map(a => a.meta.fromIdx);
+      const ascending = indices.every((v, i) => i === 0 || v >= indices[i - 1]);
+      if (ascending) {
+        score += 0.30;
+        notes.push('✓ Output phase reads scratch slots in ascending index order');
+      } else {
+        score += 0.10;
+        notes.push('Output not in ascending scratch order');
+      }
+    } else {
+      notes.push('Output phase not yet started');
+      score += 0.05;
+    }
+  } else if (legacyToScratch.length > 0) {
+    // Pre-M10 fallback: check value-matches-index heuristic
+    let matchCount = 0;
+    for (const action of legacyToScratch) {
+      const idx = action.meta.toIdx;
+      const raw = action.snap.scratch[idx];
+      const val = cardNum(raw);
+      if (val !== null && (val === idx + 1 || val === idx)) matchCount++;
+    }
+    const matchRatio = matchCount / legacyToScratch.length;
+    if (matchRatio >= 0.8) {
+      score += 0.7;
+      notes.push(`✓ ${matchCount}/${legacyToScratch.length} values placed in matching scratch slot`);
+    } else {
+      notes.push(`✗ Only ${matchCount}/${legacyToScratch.length} values in matching slot`);
+      return { score: 0.05, notes };
+    }
+    const fromScratch = real.filter(a => a.meta && a.meta.fromZone === 'scratch');
+    if (fromScratch.length > 0) {
+      const indices = fromScratch.map(a => a.meta.fromIdx);
+      if (indices.every((v, i) => i === 0 || v >= indices[i - 1])) {
+        score += 0.2;
+        notes.push('✓ Values read back from scratch in ascending order');
+      }
+    }
+  } else {
+    return { score: 0, notes: ['✗ No counting or scratch-write actions found'] };
+  }
+
+  return { score: Math.min(1, score), notes };
+}
+
+function scoreMerge(actions, n) {
+  const real  = actions.filter(a => a.type !== 'pass');
+  const notes = [];
+
+  if (real.length === 0) return { score: 0, notes: ['No moves recorded'] };
+
+  const scratchActs = real.filter(a => a.meta && (a.meta.toZone === 'scratch' || a.meta.fromZone === 'scratch'));
+  if (scratchActs.length === 0) return { score: 0, notes: ['✗ No scratch area used — merge sort requires auxiliary storage'] };
+
+  let score = 0;
+  const scratchRatio = scratchActs.length / real.length;
+  score += Math.min(0.45, scratchRatio * 0.6);
+  notes.push(`${scratchActs.length} scratch-area actions (${Math.round(scratchRatio*100)}% of total moves)`);
+
+  const writes = scratchActs.filter(a => a.meta.toZone   === 'scratch');
+  const reads  = scratchActs.filter(a => a.meta.fromZone === 'scratch');
+  if (writes.length > 0 && reads.length > 0) {
+    score += 0.35;
+    notes.push(`✓ Split phase: ${writes.length} write(s) to scratch; merge phase: ${reads.length} read(s) back`);
+  } else if (writes.length > 0) {
+    notes.push(`Only writes to scratch — no merge readout detected yet`);
+  }
+
+  const lastSnap = real.slice(-1)[0]?.snap;
+  if (lastSnap) {
+    const expectedCopies = Math.round(2 * n * Math.log2(Math.max(2, n)));
+    const ratio = lastSnap.copies / expectedCopies;
+    if (ratio >= 0.4 && ratio <= 3) {
+      score += 0.1;
+      notes.push(`✓ Copy count (${lastSnap.copies}) consistent with O(n log n) operations`);
+    }
+  }
+
+  const shifts = actions.filter(a => a.type === 'shift');
+  if (shifts.length > 0) score -= 0.1;
+
+  return { score: Math.max(0, Math.min(1, score)), notes };
+}
+
+function scoreQuick(actions, n) {
+  const real   = actions.filter(a => a.type !== 'pass');
+  const swaps  = actions.filter(a => a.type === 'swap');
+  const shifts = actions.filter(a => a.type === 'shift');
+  const notes  = [];
+
+  if (real.length === 0) return { score: 0, notes: ['No moves recorded'] };
+  if (shifts.length > 0) return { score: 0.05, notes: ['✗ Shift actions present — not quick sort'] };
+
+  const scratchUsed = real.some(a => a.meta && (a.meta.toZone === 'scratch' || a.meta.fromZone === 'scratch'));
+  if (scratchUsed) return { score: 0.05, notes: ['✗ Scratch used — quick sort is in-place'] };
+
+  if (swaps.length === 0) return { score: 0.05, notes: ['✗ No swaps recorded'] };
+
+  const nonAdj = swaps.filter(a =>
+    !(a.meta.fromZone === 'array' && a.meta.toZone === 'array' && Math.abs(a.meta.fromIdx - a.meta.toIdx) === 1)
+  );
+
+  if (nonAdj.length === 0) return { score: 0.1, notes: ['All swaps adjacent — looks more like bubble sort'] };
+
+  let score = 0.3;
+  notes.push(`✓ ${nonAdj.length} non-adjacent swap(s) (partitioning around pivot)`);
+
+  if (swaps.length > n - 1) {
+    score += 0.15;
+    notes.push(`Swap count (${swaps.length}) above selection sort threshold`);
+  }
+
+  notes.push('(Quick sort is difficult to distinguish definitively from action patterns alone)');
+
+  return { score: Math.max(0, Math.min(0.6, score)), notes };
+}
+
+function scoreRadix(actions, n) {
+  const real   = actions.filter(a => a.type !== 'pass');
+  const passes = actions.filter(a => a.type === 'pass');
+  const notes  = [];
+
+  if (real.length === 0) return { score: 0, notes: ['No moves recorded'] };
+
+  const scratchActs = real.filter(a => a.meta && (a.meta.toZone === 'scratch' || a.meta.fromZone === 'scratch'));
+  if (scratchActs.length === 0) return { score: 0, notes: ['✗ No scratch area used'] };
+
+  notes.push('(Radix sort is hard to distinguish from counting sort for small N)');
+  let score = 0.08;
+  if (passes.length >= 2) { score += 0.15; notes.push(`${passes.length} pass markers (multi-pass is a radix sort signal)`); }
+
+  return { score: Math.max(0, Math.min(0.35, score)), notes };
+}
+
+// Fraction of array elements already in their correct sorted position (0 = all wrong, 1 = all correct).
+function sortedFraction(arr) {
+  const vals = arr.map(c => cardNum(c)).filter(v => v !== null);
+  if (vals.length === 0) return 1;
+  const sorted = [...vals].sort((a, b) => a - b);
+  const correct = vals.filter((v, i) => v === sorted[i]).length;
+  return correct / vals.length;
+}
+
+function analyzeSession() {
+  const actions = state.actions;
+  const initial = state.initial;
+  const n       = state.n;
+
+  if (actions.length === 0) return null;
+
+  // --- correctness factor: how sorted is the final array? ---
+  const finalSnap = actions[actions.length - 1].snap.array;
+  const correctnessFactor = sortedFraction(finalSnap.map(migrateCard));
+
+  // --- effort factor: did the student do enough work given initial disorder? ---
+  const initialDisplacedCount = n - sortedFraction(initial.map(migrateCard)) * n;
+  const moveCount = actions.filter(a => a.type !== 'pass').length;
+  const effortFactor = initialDisplacedCount < 1
+    ? (moveCount === 0 ? 0 : 1)                                  // already sorted — any moves = full credit
+    : Math.min(1, moveCount / (initialDisplacedCount * 0.8));    // scale effort vs work needed
+
+  const penalty = correctnessFactor * effortFactor;
+
+  const scores = {
+    bubble:    scoreBubble(actions, n),
+    insertion: scoreInsertion(actions, n),
+    selection: scoreSelection(actions, initial, n),
+    counting:  scoreCounting(actions, n),
+    merge:     scoreMerge(actions, n),
+    quick:     scoreQuick(actions, n),
+    radix:     scoreRadix(actions, n),
+  };
+
+  // Apply penalty to all raw scores
+  for (const key of Object.keys(scores)) {
+    scores[key] = { ...scores[key], score: scores[key].score * penalty };
+  }
+
+  const ranked = Object.entries(scores).sort((a, b) => b[1].score - a[1].score);
+  const [bestKey, bestData] = ranked[0];
+  return { scores, ranked, best: bestKey, confidence: bestData.score, correctnessFactor, effortFactor };
+}
+
+// Returns true (stable), false (unstable), or null (cannot measure).
+// finalArray must be fully sorted cards with tags to get a meaningful result.
+function measureActualStability(finalArray, initialArray) {
+  if (!finalArray || !initialArray) return null;
+  // Need all slots filled with real, tagged cards
+  if (!finalArray.every(v => isCard(v) && v.tag)) return null;
+  // Verify sorted order
+  const nums = finalArray.map(c => c.v);
+  if (!nums.every((v, i) => i === 0 || v >= nums[i - 1])) return null; // not sorted
+  // Build expected tag order per value from initialArray
+  const initSeq = {};
+  for (const card of initialArray) {
+    if (!isCard(card) || !card.tag) return null; // initial must also have tags
+    (initSeq[card.v] = initSeq[card.v] || []).push(card.tag);
+  }
+  // Check final tag order matches initial per value
+  const finalSeq = {};
+  for (const card of finalArray) {
+    (finalSeq[card.v] = finalSeq[card.v] || []).push(card.tag);
+  }
+  for (const v of Object.keys(initSeq)) {
+    const a = initSeq[v], b = finalSeq[v] || [];
+    if (a.length !== b.length) return null;
+    if (!a.every((t, i) => t === b[i])) return false;
+  }
+  return true;
+}
+
+const ALGO_STABLE = {
+  bubble:    true,   // never swaps equal neighbours
+  insertion: true,   // shifts right, inserts left — equal elements keep order
+  selection: false,  // long-range swap can skip over an equal element
+  merge:     true,   // merge preserves left-before-right among equals
+  quick:     false,  // partition can move equal elements arbitrarily
+  counting:  true,   // read out in original relative order (when done correctly)
+  radix:     true,   // inherits stability of counting sort pass
+};
+
+const ALGO_COLORS = {
+  bubble:    '#5b8fff',
+  insertion: '#f0a030',
+  selection: '#50c878',
+  counting:  '#c070f0',
+  merge:     '#40c0e0',
+  quick:     '#ff6b6b',
+  radix:     '#a0e040',
+};
+
+function renderAnalysis() {
+  const section = document.getElementById('analysis-section');
+  const content = document.getElementById('analysis-content');
+
+  const result = analyzeSession();
+  if (!result) {
+    section.style.display = '';
+    content.innerHTML = '<p style="color:var(--muted);font-size:.85rem">No moves to analyze yet.</p>';
+    return;
+  }
+
+  section.style.display = '';
+
+  const detectedLabel = ALGO_LABELS[result.best];
+  const confidence    = Math.round(result.confidence * 100);
+
+  let verdictHtml;
+  if (!state.algorithm) {
+    verdictHtml = `<div class="analysis-verdict undeclared">Detected: <strong>${detectedLabel}</strong> — ${confidence}% confidence &nbsp;·&nbsp; No algorithm was declared</div>`;
+  } else if (state.algorithm === result.best) {
+    verdictHtml = `<div class="analysis-verdict match">✓ Declared <strong>${ALGO_LABELS[state.algorithm]}</strong> — matches detected algorithm (${confidence}% confidence)</div>`;
+  } else {
+    verdictHtml = `<div class="analysis-verdict mismatch">✗ Declared <strong>${ALGO_LABELS[state.algorithm]}</strong> but actions suggest <strong>${detectedLabel}</strong> (${confidence}% confidence)</div>`;
+  }
+
+  // Stability — inherent property of detected algorithm
+  const detectedStable = ALGO_STABLE[result.best];
+  const declaredStable = state.algorithm ? ALGO_STABLE[state.algorithm] : null;
+  const stabilityMismatch = state.algorithm && state.algorithm !== result.best &&
+                            declaredStable !== detectedStable;
+  let inherentNote = '';
+  if (stabilityMismatch) {
+    inherentNote = ` <span style="color:#f0a030;font-size:.8rem">(declared ${ALGO_LABELS[state.algorithm]} is ${declaredStable ? 'stable' : 'unstable'} — conflicts with detected)</span>`;
+  }
+  const inherentColor = detectedStable ? '#4caf50' : '#f0a030';
+
+  // Stability — empirical measurement from final array state
+  const finalSnap = state.actions.length > 0
+    ? state.actions[state.actions.length - 1].snap.array
+    : state.array;
+  const empirical = measureActualStability(finalSnap, state.initial);
+  let empiricalHtml;
+  if (empirical === null) {
+    const reason = !state.hasDuplicates
+      ? 'add duplicates to measure empirically'
+      : 'sort must be complete with all tags present';
+    empiricalHtml = `<span style="color:var(--muted)">— <em style="font-size:.8rem">${reason}</em></span>`;
+  } else if (empirical) {
+    empiricalHtml = `<span style="color:#4caf50;font-weight:bold">✓ Stable</span> <span style="color:var(--muted)">— equal elements preserved their original relative order</span>`;
+  } else {
+    empiricalHtml = `<span style="color:#e94560;font-weight:bold">✗ Unstable</span> <span style="color:var(--muted)">— equal elements did not preserve their original relative order</span>`;
+  }
+
+  const stabilityHtml = `<div style="font-size:.84rem;margin-bottom:14px;padding:8px 14px;border-radius:var(--radius);background:rgba(255,255,255,.04);display:flex;flex-direction:column;gap:6px">
+    <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+      <span style="color:var(--muted);white-space:nowrap;width:130px">Inherent stability:</span>
+      <span style="color:${inherentColor};font-weight:bold">${detectedStable ? '✓ Stable' : '✗ Unstable'}</span>
+      <span style="color:var(--muted)">— ${detectedStable ? 'equal elements preserve order' : 'equal elements may not preserve order'} (${ALGO_LABELS[result.best]})${inherentNote}</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+      <span style="color:var(--muted);white-space:nowrap;width:130px">Your sort:</span>
+      ${empiricalHtml}
+    </div>
+  </div>`;
+
+  let barsHtml = '<div class="algo-bars">';
+  for (const [key, data] of result.ranked) {
+    const pct   = Math.round(data.score * 100);
+    const isTop = key === result.best;
+    const color = isTop ? ALGO_COLORS[key] : 'rgba(255,255,255,.18)';
+    barsHtml += `
+      <div class="algo-bar-row">
+        <div class="algo-bar-label${isTop ? ' top' : ''}">${ALGO_LABELS[key]}</div>
+        <div class="algo-bar-track">
+          <div class="algo-bar-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+        <div class="algo-bar-pct${isTop ? ' top' : ''}">${pct}%</div>
+      </div>`;
+  }
+  barsHtml += '</div>';
+
+  const topNotes = result.ranked[0][1].notes;
+  const topScore = result.ranked[0][1].score;
+  const hasPasses = state.actions.some(a => a.type === 'pass');
+
+  // Penalty factor notes
+  const penaltyNotes = [];
+  const cf = result.correctnessFactor, ef = result.effortFactor;
+  if (cf < 0.99) {
+    const pct = Math.round(cf * 100);
+    penaltyNotes.push(`<li class="bad">⚠ Array is only ${pct}% sorted — confidence discounted accordingly</li>`);
+  }
+  if (ef < 0.99) {
+    if (ef < 0.15) {
+      penaltyNotes.push(`<li class="bad">⚠ Array was already mostly sorted and very few moves were made — not enough evidence to classify</li>`);
+    } else {
+      penaltyNotes.push(`<li class="note">⚠ Fewer moves than expected for the initial disorder — confidence discounted</li>`);
+    }
+  }
+
+  // Universal hint: if score < 100% and no passes were marked, remind the student
+  const passHint = (!hasPasses && topScore < 1.0 && cf > 0.99 && ef > 0.5)
+    ? `<li class="note">💡 Did you forget to mark passes? (⚑ Mark Pass after each pass)</li>`
+    : '';
+
+  let signalsHtml = '';
+  if (topNotes.length > 0 || passHint || penaltyNotes.length > 0) {
+    const items = topNotes.map(n => {
+      const cls = n.startsWith('✓') ? 'good' : n.startsWith('✗') ? 'bad' : 'note';
+      return `<li class="${cls}">${n}</li>`;
+    }).join('');
+    signalsHtml = `<div class="analysis-signals"><h4>Key signals — ${detectedLabel}</h4><ul>${penaltyNotes.join('')}${items}${passHint}</ul></div>`;
+  }
+
+  content.innerHTML = verdictHtml + stabilityHtml + barsHtml + signalsHtml;
+}
+
+// ═══════════════════════════════════════════════════════
+//  Boot
+// ═══════════════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>
