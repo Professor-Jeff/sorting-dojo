@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -501,11 +502,7 @@
     <button id="new-btn" class="primary">New Puzzle</button>
     <button id="reset-btn">↺ Reset</button>
   </div>
-  <div class="controls-row post-sort">
-    <button id="submit-btn">✔ Check Sort</button>
-    <button id="analyze-btn" disabled>🔍 Analyze</button>
-    <button id="share-btn" disabled>🔗 Share</button>
-  </div>
+
 </div>
 
 <!-- ── Algorithm declaration ─────────────────────────── -->
@@ -556,6 +553,13 @@
     <div class="zone-label">Scratch Area  <span id="scratch-hint" style="font-size:.7rem;color:var(--muted)">(+ to add slots)</span><span id="scratch-unavail-note" style="font-size:.7rem;color:var(--muted)"></span></div>
     <div id="scratch-slots"></div>
   </section>
+</div>
+
+<!-- ── Post-sort actions ──────────────────────────────── -->
+<div class="controls-row post-sort" style="margin:10px 0 4px">
+  <button id="submit-btn">✔ Check Sort</button>
+  <button id="analyze-btn" disabled>🔍 Analyze</button>
+  <button id="share-btn" disabled>🔗 Share</button>
 </div>
 
 <!-- ── Status + Playback ──────────────────────────────── -->
