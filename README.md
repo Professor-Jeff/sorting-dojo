@@ -50,6 +50,45 @@ their answer.
 3. Student clicks **Share** and pastes the URL into the Canvas quiz answer box
 4. Instructor opens the shared URL to replay and review the session
 
+### URL parameters (instructor puzzle links)
+
+Build a question-specific link instead of relying on students to set up the puzzle by hand.
+Parameters mirror the top-level UI controls:
+
+| Param | Mirrors | Example |
+|---|---|---|
+| `seed` | Seed field | `?seed=4521` |
+| `n` | N field (2–20) | `?n=10` |
+| `dup` (or `duplicates`) | Duplicates checkbox (`1`/`0`) | `?dup=1` |
+| `range` | Range field — implies duplicates even without `dup=1` | `?range=5` |
+| `tags` | Show stability tags checkbox (`1`/`0`) | `?tags=1` |
+| `algo` | "I am demonstrating" — pre-declares and locks it | `?algo=quick` |
+| `array` | Explicit array contents (comma-separated) — **supersedes** `seed`/`n`/`dup`/`range` | `?array=8,3,2,4,7,5,1,6` |
+| `lock` | Locks the whole setup row (N, Duplicates, Range, Seed, New Puzzle, Reset) so students can't reconfigure the puzzle (`1`/`0`) | `?lock=1` |
+
+`algo` accepts: `bubble`, `insertion`, `selection`, `merge`, `quick`, `counting`, `radix`.
+
+Examples:
+- `?seed=4521&algo=bubble` — seeded puzzle, Bubble Sort pre-declared
+- `?n=10&dup=1&range=5&tags=1&algo=counting` — 10 elements, duplicates with range 5, tags visible, Counting Sort declared
+- `?array=8,3,2,4,7,5,1,6&algo=quick` — exact array contents, Quick Sort declared (`seed`/`n`/`dup`/`range` are ignored if also present, since the array fixes them)
+- `?seed=4521&algo=bubble&lock=1` — same as above, but the student can't change N/Duplicates/Range/Seed or click New Puzzle/Reset — use this for the link embedded in a quiz
+
+Add `lock=1` for any link going into a quiz where the puzzle must stay exactly as assigned.
+For casual practice (not a graded link), click the **Sorting Dojo** title to open a fresh,
+unconfigured dojo in a new tab — it strips all URL params.
+
+### Building a quiz link by hand (Capture Config button)
+
+Rather than writing the query string yourself, just configure the puzzle in the UI (N,
+Duplicates, Range, Seed or Worst Case/Already Sorted, declare an algorithm, set Show stability
+tags) and click the small **🧰** button at the end of the setup row. It copies a `lock=1` URL
+reproducing the *current setup* (not whatever sorting progress you've made) to your clipboard.
+It uses `seed`/`n`/`dup`/`range` for a plain random puzzle, or falls back to `array=` with the
+exact values if you used Worst Case / Already Sorted (those can't be reproduced from the seed
+alone). The button is deliberately tiny and low-contrast — it's an instructor tool, not something
+students need.
+
 ## Embedding in Canvas
 
 Use a direct link (not an iframe) for quiz questions — students open the dojo
@@ -70,4 +109,4 @@ interface. GitHub Pages redeploys within ~1 minute.
 Single `index.html` — no build step, no dependencies, no server required.
 Opens via `file://` or any static host.
 
-See [DECISIONS.md](DECISIONS.md) for the full design decision log (D1–D33, U1–U6).
+See [DECISIONS.md](DECISIONS.md) for the full design decision log (D1–D36, U1–U6).
