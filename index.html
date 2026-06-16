@@ -514,7 +514,7 @@
 <body>
 
 <header>
-  <h1>Sorting Dojo</h1>
+  <h1><a id="logo-link" href="#" target="_blank" title="Open a fresh, unconfigured dojo in a new tab" style="color:inherit;text-decoration:none">Sorting Dojo</a></h1>
   <p>COMP 220 · Algorithms &amp; Data Structures</p>
 </header>
 
@@ -534,6 +534,7 @@
       </div>
     </div>
     <button id="reset-btn">↺ Reset</button>
+    <button id="capture-url-btn" title="Instructor: copy the current N/Duplicates/Range/Seed/Algorithm setup as a locked quiz URL" style="opacity:.35;font-size:.75rem;padding:6px 10px">🧰</button>
   </div>
 
 </div>
@@ -699,6 +700,7 @@ let state = {
   showTags:      false, // show letter tags on cards (auto-on for counting/radix)
   algorithm:     null,  // declared algorithm key, e.g. 'bubble'
   algoLocked:    false, // locked after first move
+  puzzleType:    'random', // 'random' | 'sorted' | 'worst' — drives seed-vs-array bias when capturing a config URL
   markers:       { L: null, R: null }, // { idx } or null — array index only
   markerMode:    null,  // 'L' | 'R' | null — placement mode
   quickStack:    [],    // pending sub-arrays [{L,R}] for quicksort auto-advance
@@ -712,8 +714,27 @@ let drag = { value: null, zone: null, idx: null };
 // ═══════════════════════════════════════════════════════
 //  Init / New Puzzle
 // ═══════════════════════════════════════════════════════
+// Disables the puzzle-setup row (N, Duplicates, Range, Seed, New Puzzle, Reset) so
+// students can't reconfigure a puzzle the instructor specified via URL params.
+// Algorithm declaration is unaffected here — it's already locked separately by
+// lockAlgorithmFromParam() when `algo` is specified, or after the student's first move.
+function lockSetupControls() {
+  ['n-input', 'duplicates-cb', 'range-input', 'seed-input', 'new-btn', 'new-caret-btn', 'reset-btn']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      el.disabled = true;
+      el.title = 'Locked by instructor link';
+    });
+}
+
 function init() {
+  // Logo link reopens the current page with no query/hash params (file:// and
+  // hosted URLs alike — location.origin is unreliable for file:// in some browsers,
+  // so just strip from the first '?' or '#' of the resolved href instead).
+  document.getElementById('logo-link').href = location.href.split(/[?#]/)[0];
+
   const params = new URLSearchParams(location.search);
+  const lock = params.get('lock') === '1' || params.get('lock') === 'true';
 
   // If session param present — replay mode bootstrap
   if (params.has('session')) {
@@ -721,17 +742,85 @@ function init() {
     return;
   }
 
-  // If array param present — instructor-specified puzzle
+  // If array param present — instructor-specified puzzle. Array contents take
+  // precedence: seed/n/dup/range are ignored since the array itself fixes N
+  // and duplicate structure. algo and tags still apply on top.
   if (params.has('array')) {
-    loadArrayURL(params.get('array'), params.get('algo'));
+    const conflicting = ['seed', 'n', 'dup', 'duplicates', 'range'].some(k => params.has(k));
+    if (conflicting) {
+      setStatus('Note: array param takes precedence — seed/n/duplicates/range params ignored.', '');
+    }
+    if (lock) lockSetupControls();
+    loadArrayURL(params.get('array'), params.get('algo'), params.get('tags'));
     return;
   }
 
-  const seedParam = params.get('seed');
+  // Build a generated puzzle from individual params, mirroring the top-level
+  // UI controls: seed, n, duplicates/range, show stability tags, algorithm.
+  const seedParam  = params.get('seed');
+  const nParam     = parseInt(params.get('n'), 10);
+  const dupParam   = params.get('dup') ?? params.get('duplicates');
+  const rangeParam = parseInt(params.get('range'), 10);
+  const tagsParam  = params.get('tags');
+  const algoParam  = params.get('algo');
+
+  if (!isNaN(nParam)) {
+    document.getElementById('n-input').value = Math.max(2, Math.min(20, nParam));
+  }
+
+  const dupExplicit = dupParam != null
+    ? (dupParam === '1' || dupParam === 'true')
+    : !isNaN(rangeParam); // specifying a range implies duplicates, even without dup=1
+  document.getElementById('duplicates-cb').checked = dupExplicit;
+  document.getElementById('range-label').style.display = dupExplicit ? '' : 'none';
+  if (dupExplicit && !isNaN(rangeParam)) {
+    document.getElementById('range-input').value = rangeParam;
+  }
+
   newPuzzle(seedParam ? parseInt(seedParam, 10) : null);
+
+  if (tagsParam != null) {
+    const show = tagsParam === '1' || tagsParam === 'true';
+    state.showTags = show;
+    document.getElementById('show-tags-cb').checked = show;
+    render();
+  }
+
+  if (lock) lockSetupControls();
+  lockAlgorithmFromParam(algoParam);
 }
 
-function loadArrayURL(arrayParam, algoParam) {
+// Pre-declares and locks an algorithm from a URL param, mirroring what
+// selecting it in the "I am demonstrating" dropdown + first move would do.
+function lockAlgorithmFromParam(algoParam) {
+  const validAlgos = ['bubble', 'insertion', 'selection', 'merge', 'quick', 'counting', 'radix'];
+  if (!algoParam || !validAlgos.includes(algoParam)) return;
+  const n = state.n;
+  state.algorithm  = algoParam;
+  state.algoLocked = true;
+  document.getElementById('algo-select').value = algoParam;
+  if (algoParam === 'insertion') {
+    state.shiftMode = true;
+    document.getElementById('shift-btn').textContent = '⇒ Shift';
+  }
+  if (algoParam === 'quick') initQuickSort();
+  if (algoParam === 'counting' || algoParam === 'radix') {
+    const needed = n + 1;
+    state.scratch     = Array.from({ length: needed }, (_, i) => ({ counter: true, v: i, count: 0, outputIdx: 0 }));
+    state.scratchSize = needed;
+  }
+  if (ALGO_USES_SCRATCH[algoParam]) {
+    const needed = (algoParam === 'counting' || algoParam === 'radix') ? n + 1 : n;
+    if (state.scratch.length < needed) {
+      state.scratchSize = needed;
+    }
+  }
+  updateAlgoUI();
+  renderScratchSlots();
+  render();
+}
+
+function loadArrayURL(arrayParam, algoParam, tagsParam) {
   const nums = arrayParam.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
   if (nums.length < 2) { newPuzzle(null); return; }
 
@@ -760,6 +849,7 @@ function loadArrayURL(arrayParam, algoParam) {
   state.n             = n;
   state.range         = hasDups ? r : n;
   state.hasDuplicates = hasDups;
+  state.puzzleType    = 'array';
   state.showTags      = hasDups;
   state.initial       = cards;
   state.array         = cards.map(c => ({ ...c }));
@@ -782,28 +872,13 @@ function loadArrayURL(arrayParam, algoParam) {
   document.getElementById('analysis-section').style.display = 'none';
 
   // Pre-declare and lock algorithm if specified
-  const validAlgos = ['bubble','insertion','selection','merge','quick','counting','radix'];
-  if (algoParam && validAlgos.includes(algoParam)) {
-    state.algorithm  = algoParam;
-    state.algoLocked = true;
-    document.getElementById('algo-select').value = algoParam;
-    // Trigger algo-specific setup
-    if (algoParam === 'insertion') {
-      state.shiftMode = true;
-      document.getElementById('shift-btn').textContent = '⇒ Shift';
-    }
-    if (algoParam === 'quick') initQuickSort();
-    if (algoParam === 'counting' || algoParam === 'radix') {
-      const needed = n + 1;
-      state.scratch     = Array.from({ length: needed }, (_, i) => ({ counter: true, v: i, count: 0, outputIdx: 0 }));
-      state.scratchSize = needed;
-    }
-    if (ALGO_USES_SCRATCH[algoParam]) {
-      const needed = (algoParam === 'counting' || algoParam === 'radix') ? n + 1 : n;
-      if (state.scratch.length < needed) {
-        state.scratchSize = needed;
-      }
-    }
+  lockAlgorithmFromParam(algoParam);
+
+  // Explicit tags param overrides the dup-based default set above
+  if (tagsParam != null) {
+    const show = tagsParam === '1' || tagsParam === 'true';
+    state.showTags = show;
+    document.getElementById('show-tags-cb').checked = show;
   }
 
   setStatus('Instructor puzzle loaded. Drag values to sort them.', '');
@@ -848,6 +923,7 @@ function newPuzzle(seedOverride) {
   state.n              = n;
   state.range          = r;
   state.hasDuplicates  = hasDups;
+  state.puzzleType     = 'random';
   state.initial        = cards;
   state.array          = cards.map(c => ({ ...c }));
   state.temp        = null;
@@ -1079,7 +1155,11 @@ function updateAlgoUI() {
   const badge = document.getElementById('algo-badge');
   sel.disabled  = state.algoLocked;
   sel.className = state.algorithm ? 'declared' : '';
-  note.textContent = state.algoLocked ? '🔒 locked — reset to change' : '';
+  // "Reset to change" is only true if Reset itself isn't disabled (e.g. via ?lock=1)
+  const canReset = !document.getElementById('reset-btn').disabled;
+  note.textContent = state.algoLocked
+    ? (canReset ? '🔒 locked — reset to change' : '🔒 locked')
+    : '';
   badge.textContent = state.algorithm ? ALGO_LABELS[state.algorithm] : '';
 
   const advisory = document.getElementById('algo-advisory');
@@ -1804,6 +1884,57 @@ function showShare() {
   });
 }
 
+// Instructor tool: capture the current setup (not live sort progress) as a locked
+// quiz-ready URL. Biases toward `seed` (shorter, canonical) for a plain random
+// puzzle; falls back to `array` (exact values) when Worst Case / Already Sorted
+// was used, since those mutate the array away from what the seed alone produces.
+function buildConfigURL() {
+  const params = new URLSearchParams();
+
+  if (state.puzzleType === 'random') {
+    params.set('seed', state.seed);
+    params.set('n', state.n);
+    if (state.hasDuplicates) {
+      params.set('dup', '1');
+      params.set('range', state.range);
+    }
+  } else {
+    params.set('array', state.initial.map(c => c.v).join(','));
+  }
+
+  params.set('tags', state.showTags ? '1' : '0');
+  if (state.algorithm) params.set('algo', state.algorithm);
+  params.set('lock', '1');
+
+  const base = location.href.split(/[?#]/)[0];
+  return `${base}?${params.toString()}`;
+}
+
+function captureConfigURL() {
+  const url = buildConfigURL();
+  const btn = document.getElementById('capture-url-btn');
+
+  const didCopy = (navigator.clipboard
+    ? navigator.clipboard.writeText(url).then(() => true).catch(() => false)
+    : Promise.resolve(false)
+  );
+
+  didCopy.then(ok => {
+    if (ok) {
+      btn.textContent = '✔ Copied';
+    } else {
+      // file:// without a focused/selected textarea can't use execCommand reliably here —
+      // fall back to a prompt so the instructor can still copy it manually.
+      window.prompt('Copy this locked quiz URL:', url);
+      btn.textContent = '🧰';
+      return;
+    }
+    setTimeout(() => btn.textContent = '🧰', 2500);
+  });
+}
+
+document.getElementById('capture-url-btn').addEventListener('click', captureConfigURL);
+
 function loadSession(encoded) {
   try {
     const payload = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(encoded)))));
@@ -1891,6 +2022,7 @@ function applyPuzzleType(type) {
     state.array = state.initial.map(c => ({ ...c }));
     state.array.sort((a, b) => a.v - b.v || a.tag.localeCompare(b.tag));
     state.initial = state.array.map(c => ({ ...c }));
+    state.puzzleType = 'sorted';
     render();
     return;
   }
@@ -1903,8 +2035,9 @@ function applyPuzzleType(type) {
       setStatus(`No distinct worst case for ${label} — showing random puzzle.`, '');
       return;
     }
-    state.array   = fn(state.initial);
-    state.initial = state.array.map(c => ({ ...c }));
+    state.array      = fn(state.initial);
+    state.initial    = state.array.map(c => ({ ...c }));
+    state.puzzleType = 'worst';
     render();
   }
 }
