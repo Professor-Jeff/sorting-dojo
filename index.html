@@ -83,6 +83,7 @@
   }
   button:hover:not(:disabled) { background: #1a4a8a; border-color: rgba(64,200,200,.5); }
   button:focus-visible { outline: 2px solid #40c8c8; outline-offset: 2px; }
+  .puzzle-type-opt:hover { background: rgba(64,200,200,.12); color: #40c8c8; }
   button.primary { background: #163d6e; }
   button.success { background: var(--success); border-color: transparent; }
   button:disabled { opacity: .4; cursor: default; }
@@ -284,6 +285,24 @@
     opacity: .8;
   }
 
+  /* ── L/R partition markers ──────────────────────────── */
+  .marker-badge {
+    position: absolute;
+    top: 2px; left: 3px;
+    font-size: .55rem;
+    font-weight: bold;
+    line-height: 1;
+    padding: 1px 3px;
+    border-radius: 3px;
+    pointer-events: none;
+  }
+  .marker-badge.L { background: #40c8c8; color: #0a0f1e; }
+  .marker-badge.R { background: #f0a030; color: #0a0f1e; }
+  .marker-mode-L .slot[data-zone="array"] { cursor: crosshair; }
+  .marker-mode-R .slot[data-zone="array"] { cursor: crosshair; }
+  #marker-btns { display: none; gap: 6px; align-items: center; }
+  button.marker-active { outline: 2px solid #40c8c8; outline-offset: 2px; }
+
   /* ── Status warn (correct but unstable) ────────────── */
   #status-msg.warn { color: #f0a030; font-weight: bold; }
 
@@ -311,6 +330,13 @@
     cursor: default;
     border-color: var(--muted);
     filter: grayscale(.6);
+  }
+
+  .card.pivot {
+    border-color: #4caf50;
+    box-shadow: 0 0 6px rgba(76,175,80,.4);
+    cursor: default;
+    opacity: .75;
   }
 
   .card.ghost {
@@ -499,7 +525,14 @@
     <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="duplicates-cb" style="accent-color:var(--highlight)"> Duplicates</label>
     <label id="range-label" style="display:none" title="Value range 1..R (must be < N for duplicates).">Range <input type="number" id="range-input" min="2" max="26" style="width:56px"></label>
     <label>Seed <input type="text" id="seed-input" value="" style="width:52px"></label>
-    <button id="new-btn" class="primary">New Puzzle</button>
+    <div style="position:relative;display:inline-flex">
+      <button id="new-btn" class="primary" style="border-radius:var(--radius) 0 0 var(--radius);border-right:1px solid rgba(255,255,255,.15)">New Puzzle</button>
+      <button id="new-caret-btn" class="primary" title="Choose puzzle type" style="border-radius:0 var(--radius) var(--radius) 0;padding:0 8px;font-size:.75rem">▾</button>
+      <div id="new-dropdown" style="display:none;position:absolute;top:100%;left:0;z-index:100;background:#1a2a4a;border:1px solid rgba(64,200,200,.3);border-radius:var(--radius);min-width:160px;box-shadow:0 4px 12px rgba(0,0,0,.4);margin-top:2px">
+        <div class="puzzle-type-opt" data-type="worst"   style="padding:8px 14px;cursor:pointer;font-size:.85rem;border-bottom:1px solid rgba(255,255,255,.06)">⚠ Worst Case</div>
+        <div class="puzzle-type-opt" data-type="sorted"  style="padding:8px 14px;cursor:pointer;font-size:.85rem">✓ Already Sorted</div>
+      </div>
+    </div>
     <button id="reset-btn">↺ Reset</button>
   </div>
 
@@ -531,6 +564,11 @@
   <button id="shift-btn">⇌ Swap</button>
   <button id="pass-btn" disabled>⚑ Mark Pass</button>
   <button id="undo-btn" disabled>↩ Undo</button>
+  <span id="marker-btns">
+    <button id="set-l-btn" title="Click to place L marker, then click a card">▶ Set L</button>
+    <button id="set-r-btn" title="Click to place R marker, then click a card">◀ Set R</button>
+  </span>
+  <button id="next-partition-btn" title="Pivot is already in place — advance to next partition" style="display:none">Next Partition</button>
 </div>
 
 <!-- ── Main array ─────────────────────────────────────── -->
@@ -585,6 +623,7 @@
 <div id="share-box">
   <div class="zone-label">Shareable Link</div>
   <textarea id="share-url" rows="2" readonly></textarea>
+  <div id="share-elapsed" style="font-size:.8rem;color:var(--muted);margin-top:4px"></div>
 </div>
 
 <!-- ── Arrow overlay (playback) ──────────────────────── -->
@@ -660,6 +699,9 @@ let state = {
   showTags:      false, // show letter tags on cards (auto-on for counting/radix)
   algorithm:     null,  // declared algorithm key, e.g. 'bubble'
   algoLocked:    false, // locked after first move
+  markers:       { L: null, R: null }, // { idx } or null — array index only
+  markerMode:    null,  // 'L' | 'R' | null — placement mode
+  quickStack:    [],    // pending sub-arrays [{L,R}] for quicksort auto-advance
 };
 
 // ═══════════════════════════════════════════════════════
@@ -679,8 +721,95 @@ function init() {
     return;
   }
 
+  // If array param present — instructor-specified puzzle
+  if (params.has('array')) {
+    loadArrayURL(params.get('array'), params.get('algo'));
+    return;
+  }
+
   const seedParam = params.get('seed');
   newPuzzle(seedParam ? parseInt(seedParam, 10) : null);
+}
+
+function loadArrayURL(arrayParam, algoParam) {
+  const nums = arrayParam.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+  if (nums.length < 2) { newPuzzle(null); return; }
+
+  const n = nums.length;
+  const r = Math.max(...nums);
+  const hasDups = new Set(nums).size < n;
+
+  // Assign letter tags: value V gets tag A for 1st occurrence, B for 2nd, etc.
+  // (always assigned, even without duplicates, so stability tags work on any puzzle)
+  const tagCount = {};
+  const cards = nums.map(v => {
+    tagCount[v] = (tagCount[v] || 0) + 1;
+    return { v, tag: String.fromCharCode(64 + tagCount[v]) };
+  });
+
+  // Update UI controls to reflect the loaded array
+  document.getElementById('n-input').value = n;
+  document.getElementById('seed-input').value = '';
+  if (hasDups) {
+    document.getElementById('duplicates-cb').checked = true;
+    document.getElementById('range-label').style.display = '';
+    document.getElementById('range-input').value = r;
+  }
+
+  state.seed          = 0;
+  state.n             = n;
+  state.range         = hasDups ? r : n;
+  state.hasDuplicates = hasDups;
+  state.showTags      = hasDups;
+  state.initial       = cards;
+  state.array         = cards.map(c => ({ ...c }));
+  state.temp          = null;
+  state.scratch       = Array(state.scratchSize).fill(null);
+  state.copies        = 0;
+  state.swaps         = 0;
+  state.actions       = [];
+  state.playHead      = -1;
+  state.highlight     = null;
+  state.algoLocked    = false;
+  state.transitioning = false;
+
+  document.getElementById('show-tags-cb').checked = hasDups;
+  document.getElementById('share-box').style.display  = 'none';
+  document.getElementById('share-btn').disabled        = true;
+  document.getElementById('analyze-btn').disabled      = true;
+  document.getElementById('pass-btn').disabled         = true;
+  document.getElementById('undo-btn').disabled         = true;
+  document.getElementById('analysis-section').style.display = 'none';
+
+  // Pre-declare and lock algorithm if specified
+  const validAlgos = ['bubble','insertion','selection','merge','quick','counting','radix'];
+  if (algoParam && validAlgos.includes(algoParam)) {
+    state.algorithm  = algoParam;
+    state.algoLocked = true;
+    document.getElementById('algo-select').value = algoParam;
+    // Trigger algo-specific setup
+    if (algoParam === 'insertion') {
+      state.shiftMode = true;
+      document.getElementById('shift-btn').textContent = '⇒ Shift';
+    }
+    if (algoParam === 'quick') initQuickSort();
+    if (algoParam === 'counting' || algoParam === 'radix') {
+      const needed = n + 1;
+      state.scratch     = Array.from({ length: needed }, (_, i) => ({ counter: true, v: i, count: 0, outputIdx: 0 }));
+      state.scratchSize = needed;
+    }
+    if (ALGO_USES_SCRATCH[algoParam]) {
+      const needed = (algoParam === 'counting' || algoParam === 'radix') ? n + 1 : n;
+      if (state.scratch.length < needed) {
+        state.scratchSize = needed;
+      }
+    }
+  }
+
+  setStatus('Instructor puzzle loaded. Drag values to sort them.', '');
+  updateAlgoUI();
+  renderScratchSlots();
+  render();
 }
 
 function newPuzzle(seedOverride) {
@@ -705,12 +834,14 @@ function newPuzzle(seedOverride) {
     nums = Array.from({ length: n }, () => Math.floor(rng() * r) + 1);
   }
 
-  // Assign letter tags: value V gets tag A for 1st occurrence, B for 2nd, etc.
   const hasDups = r < n;
+
+  // Assign letter tags: value V gets tag A for 1st occurrence, B for 2nd, etc.
+  // (always assigned, even without duplicates, so stability tags work on any puzzle)
   const tagCount = {};
   const cards = nums.map(v => {
     tagCount[v] = (tagCount[v] || 0) + 1;
-    return { v, tag: hasDups ? String.fromCharCode(64 + tagCount[v]) : '' };
+    return { v, tag: String.fromCharCode(64 + tagCount[v]) };
   });
 
   state.seed           = seed;
@@ -728,6 +859,7 @@ function newPuzzle(seedOverride) {
   state.highlight    = null;
   state.algoLocked   = false;
   state.transitioning = false;
+  if (state.algorithm === 'quick') initQuickSort(); else clearMarkers();
 
   document.getElementById('share-box').style.display = 'none';
   document.getElementById('share-btn').disabled   = true;
@@ -760,6 +892,7 @@ function resetPuzzle() {
   state.highlight     = null;
   state.transitioning = false;
   state.algoLocked    = false;
+  if (state.algorithm === 'quick') initQuickSort(); else clearMarkers();
   clearArrow();
   document.getElementById('share-box').style.display = 'none';
   document.getElementById('analysis-section').style.display = 'none';
@@ -776,12 +909,94 @@ function resetPuzzle() {
 // ═══════════════════════════════════════════════════════
 function snapshot() {
   return {
-    array:   [...state.array],
-    temp:    state.temp,
-    scratch: [...state.scratch],
-    copies:  state.copies,
-    swaps:   state.swaps,
+    array:      [...state.array],
+    temp:       state.temp,
+    scratch:    [...state.scratch],
+    copies:     state.copies,
+    swaps:      state.swaps,
+    markers:    { ...state.markers },
+    quickStack: [...state.quickStack],
   };
+}
+
+function initQuickSort() {
+  state.quickStack = [];
+  state.markers = { L: 0, R: state.n - 1 };
+}
+
+function autoLockSorted() {
+  // Lock any array cards that are in their correct sorted position
+  // (used for size-1 sub-arrays that are trivially sorted)
+  const sorted = [...state.array].filter(isCard).map(c => c.v).sort((a, b) => a - b);
+  const sortedSet = new Set(state.array.map((c, i) => isCard(c) && !c.pivot ? i : -1).filter(i => i >= 0));
+  // Just lock size-1 sub-arrays explicitly via the caller
+}
+
+function lockSingle(idx) {
+  const card = state.array[idx];
+  if (isCard(card) && !card.pivot) {
+    state.array[idx] = { ...card, pivot: true };
+    recordAction(`Pivot ${card.v} → final position [${idx}] (size-1 sub-array)`, 'partition', { pivotIdx: idx });
+  }
+}
+
+function lockRange(L, R) {
+  for (let i = L; i <= R; i++) {
+    const c = state.array[i];
+    if (isCard(c) && !c.pivot) {
+      state.array[i] = { ...c, pivot: true };
+      recordAction(`Pivot ${c.v} → final position [${i}] (already sorted)`, 'partition', { pivotIdx: i });
+    }
+  }
+}
+
+function isSubarraySorted(L, R) {
+  for (let i = L; i < R; i++) {
+    const a = state.array[i], b = state.array[i + 1];
+    if (isCard(a) && !a.pivot && isCard(b) && !b.pivot && a.v > b.v) return false;
+  }
+  return true;
+}
+
+function advanceQuickSort(L, R, p) {
+  // Right sub-array
+  if (p + 1 === R) {
+    lockSingle(R);
+  } else if (p + 1 < R) {
+    state.quickStack.push({ L: p + 1, R });
+  }
+  // Left sub-array
+  if (p - 1 === L) {
+    lockSingle(L);
+  } else if (L < p - 1) {
+    state.quickStack.push({ L, R: p - 1 });
+  }
+  // Pop next pending sub-array, cascading through any that are already fully sorted
+  while (state.quickStack.length > 0) {
+    const next = state.quickStack.pop();
+    if (isSubarraySorted(next.L, next.R)) {
+      lockRange(next.L, next.R);
+      continue;
+    }
+    state.markers = { L: next.L, R: next.R };
+    return;
+  }
+  state.markers = { L: null, R: null };
+  setStatus('Quick sort complete — all pivots placed!', 'ok');
+}
+
+function placeMarker(which, idx) {
+  state.markers[which] = idx;
+  state.markerMode = null;
+  document.getElementById('set-l-btn').classList.remove('marker-active');
+  document.getElementById('set-r-btn').classList.remove('marker-active');
+  recordAction(`Marker ${which} → [${idx}]`, 'marker', { which, idx });
+  render();
+}
+
+function clearMarkers() {
+  state.markers = { L: null, R: null };
+  state.markerMode = null;
 }
 
 function recordAction(desc, type = 'move', meta = null) {
@@ -819,6 +1034,7 @@ function undoLast() {
     state.swaps     = 0;
     state.playHead  = -1;
     state.highlight = null;
+    if (state.algorithm === 'quick') initQuickSort(); else clearMarkers();
     document.getElementById('undo-btn').disabled    = true;
     document.getElementById('share-btn').disabled   = true;
     document.getElementById('analyze-btn').disabled = true;
@@ -826,11 +1042,13 @@ function undoLast() {
   } else {
     state.playHead = state.actions.length - 1;
     const a = state.actions[state.playHead];
-    state.array     = [...a.snap.array];
-    state.temp      = a.snap.temp;
-    state.scratch   = [...a.snap.scratch];
+    state.array     = [...a.snap.array].map(migrateCard);
+    state.temp      = migrateCard(a.snap.temp);
+    state.scratch   = [...a.snap.scratch].map(migrateCard);
     state.copies    = a.snap.copies ?? 0;
     state.swaps     = a.snap.swaps  ?? 0;
+    state.markers   = a.snap.markers ? { ...a.snap.markers } : { L: null, R: null };
+    state.quickStack = a.snap.quickStack ? [...a.snap.quickStack] : [];
     state.highlight = a.meta;
     // re-enable pass only if last action was a move (not another pass marker)
     document.getElementById('pass-btn').disabled = a.type === 'pass';
@@ -887,6 +1105,43 @@ function updateAlgoUI() {
     scratchHint.style.display = 'none';
   }
 
+  // Grey out "Worst Case" option when no algorithm declared or algo has no worst case
+  const worstOpt = document.querySelector('.puzzle-type-opt[data-type="worst"]');
+  const hasWorstCase = state.algorithm && WORST_CASE_ALGO[state.algorithm] !== null;
+  worstOpt.style.opacity      = hasWorstCase ? '' : '0.35';
+  worstOpt.style.pointerEvents = hasWorstCase ? '' : 'none';
+  worstOpt.title = hasWorstCase ? '' : (state.algorithm ? `No distinct worst case for ${ALGO_LABELS[state.algorithm]}` : 'Declare an algorithm first');
+
+  // Show/hide L/R marker buttons — merge only (quicksort auto-manages L/R)
+  const usesMarkers = state.algorithm === 'merge';
+  const isQuickSort = state.algorithm === 'quick';
+  document.getElementById('marker-btns').style.display = usesMarkers ? 'flex' : 'none';
+  document.getElementById('next-partition-btn').style.display = isQuickSort ? '' : 'none';
+  if (!usesMarkers && !isQuickSort) clearMarkers();
+
+  // Quicksort: disable Mark Pass (not meaningful) and Shift mode (swaps only)
+  const isQuick = state.algorithm === 'quick';
+  const passBtn  = document.getElementById('pass-btn');
+  const shiftBtn = document.getElementById('shift-btn');
+  if (isQuick) {
+    passBtn.disabled = true;
+    passBtn.style.opacity = '0.35';
+    passBtn.title = 'Mark Pass not used in quick sort';
+    shiftBtn.disabled = true;
+    shiftBtn.style.opacity = '0.35';
+    shiftBtn.title = 'Quick sort uses direct swaps only';
+    if (state.shiftMode) {
+      state.shiftMode = false;
+      shiftBtn.textContent = '⇌ Swap';
+    }
+  } else {
+    passBtn.style.opacity = '';
+    passBtn.title = '';
+    shiftBtn.disabled = false;
+    shiftBtn.style.opacity = '';
+    shiftBtn.title = '';
+  }
+
   // Show/collapse temp based on whether the declared algorithm needs it
   const tempSection = document.getElementById('temp-section');
   const needsTemp   = !state.algorithm || ALGO_USES_TEMP[state.algorithm];
@@ -908,16 +1163,29 @@ function render() {
       : '';
 }
 
-function makeCard(raw, ghost = false) {
+function makeCard(raw, ghost = false, zone, idx) {
   const c = document.createElement('div');
   const counted = isCard(raw) && (raw.counted || raw.placed);
-  c.className = 'card' + (ghost ? ' ghost' : '') + (counted ? ' counted' : '');
+  const pivot   = isCard(raw) && raw.pivot;
+  c.className = 'card' + (ghost ? ' ghost' : '') + (counted ? ' counted' : '') + (pivot ? ' pivot' : '');
+  c.style.position = 'relative';
   const num = isGhost(raw) ? raw.v : (isCard(raw) ? raw.v : raw);
   const tag = (isGhost(raw) || isCard(raw)) ? (raw.tag || '') : '';
   c.innerHTML = (state.showTags && tag)
     ? `${num}<span class="card-tag">${tag}</span>`
     : `${num}`;
-  c.draggable = !ghost && !counted;
+  // Marker badges (L/R) for array slots
+  if (zone === 'array') {
+    for (const [m, color] of [['L', 'L'], ['R', 'R']]) {
+      if (state.markers[m] !== null && state.markers[m] === idx) {
+        const badge = document.createElement('span');
+        badge.className = `marker-badge ${color}`;
+        badge.textContent = m;
+        c.appendChild(badge);
+      }
+    }
+  }
+  c.draggable = !ghost && !counted && !pivot;
   return c;
 }
 
@@ -959,14 +1227,22 @@ function renderArraySlots(containerId, arr, zone) {
     if (raw !== null) {
       const g       = isGhost(raw);
       const counted = isCard(raw) && raw.counted;
-      const card    = makeCard(raw, g);
+      const card    = makeCard(raw, g, zone, i);
       if (!g && !counted) attachCardDrag(card, zone, i, raw);
       slot.appendChild(card);
+    }
+    // Marker placement click on array slots
+    if (zone === 'array' && state.markerMode) {
+      slot.addEventListener('click', () => placeMarker(state.markerMode, i));
     }
     container.appendChild(slot);
   });
   document.getElementById('array-label-extra').textContent =
     `[${state.initial.map(v => cardLabel(v)).join(', ')}]`;
+  // Apply crosshair class to array section when in marker mode
+  const arraySection = document.getElementById('array-section');
+  arraySection.classList.toggle('marker-mode-L', state.markerMode === 'L');
+  arraySection.classList.toggle('marker-mode-R', state.markerMode === 'R');
 }
 
 function renderTempSlot() {
@@ -1066,9 +1342,11 @@ function renderLog() {
 // ═══════════════════════════════════════════════════════
 function isLockedSlot(zone, idx) {
   if (zone !== 'array') return false;
-  if (state.algorithm !== 'counting' && state.algorithm !== 'radix') return false;
   const raw = getRaw(zone, idx);
-  return isCard(raw) && (raw.counted || raw.placed);
+  if (!isCard(raw)) return false;
+  if (state.algorithm === 'counting' || state.algorithm === 'radix') return raw.counted || raw.placed;
+  if (state.algorithm === 'quick') return !!raw.pivot;
+  return false;
 }
 
 function onDragOver(e) {
@@ -1195,6 +1473,24 @@ function onDrop(e) {
   }
 
   recordAction(desc, actionType, meta);
+
+  // Quicksort: auto-detect pivot placement — swap where one end is arr[L]
+  if (state.algorithm === 'quick' && actionType === 'swap' &&
+      fromZone === 'array' && toZone === 'array' &&
+      state.markers.L !== null) {
+    const pivotFinalIdx = (fromIdx === state.markers.L) ? toIdx : (toIdx === state.markers.L) ? fromIdx : null;
+    if (pivotFinalIdx !== null) {
+      const pivotCard = getRaw('array', pivotFinalIdx);
+      if (isCard(pivotCard)) {
+        const currentL = state.markers.L;
+        const currentR = state.markers.R;
+        state.array[pivotFinalIdx] = { ...pivotCard, pivot: true };
+        recordAction(`Partition done! Pivot ${pivotCard.v} → final position [${pivotFinalIdx}]`, 'partition', { pivotIdx: pivotFinalIdx });
+        advanceQuickSort(currentL, currentR, pivotFinalIdx);
+      }
+    }
+  }
+
   drag = { value: null, zone: null, idx: null };
   render();
 }
@@ -1222,7 +1518,7 @@ function migrateCard(v) {
   if (typeof v === 'object') {
     if (v.counter) return v;                                                          // counter slot — pass through
     if (v.ghost) return typeof v.v === 'number' ? { ghost: true, v: v.v, tag: v.tag || '' } : null;
-    if (typeof v.v === 'number') return { v: v.v, tag: v.tag || '' };
+    if (typeof v.v === 'number') return { v: v.v, tag: v.tag || '', ...(v.counted && { counted: true }), ...(v.placed && { placed: true }), ...(v.pivot && { pivot: true }) };
   }
   return null;
 }
@@ -1339,7 +1635,9 @@ function applySnap(snap, meta = null) {
   state.scratch   = snap.scratch.map(migrateCard);
   state.copies    = snap.copies ?? 0;
   state.swaps     = snap.swaps  ?? 0;
-  state.highlight = meta;
+  state.markers    = snap.markers    ? { ...snap.markers }    : { L: null, R: null };
+  state.quickStack = snap.quickStack ? [...snap.quickStack]   : [];
+  state.highlight  = meta;
   render();
 }
 
@@ -1443,6 +1741,11 @@ function togglePlay() {
 //  Share / Session encoding
 // ═══════════════════════════════════════════════════════
 function buildShareURL() {
+  const moveTimes = state.actions.filter(a => a.type !== 'pass' && a.type !== 'partition' && a.t);
+  const elapsed = moveTimes.length >= 2
+    ? moveTimes[moveTimes.length - 1].t - moveTimes[0].t
+    : null;
+
   const payload = {
     v:         2,
     seed:      state.seed,
@@ -1452,11 +1755,19 @@ function buildShareURL() {
     algorithm: state.algorithm,
     copies:    state.copies,
     swaps:     state.swaps,
+    elapsed,
     actions:   state.actions.map(a => ({ desc: a.desc, type: a.type, meta: a.meta, snap: a.snap })),
   };
   const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
   const url = `${location.origin}${location.pathname}?session=${encodeURIComponent(encoded)}`;
   return url;
+}
+
+function formatElapsed(ms) {
+  if (ms == null) return null;
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
 }
 
 function showShare() {
@@ -1467,6 +1778,12 @@ function showShare() {
 
   ta.value = url;
   box.style.display = 'flex';
+
+  const moveTimes = state.actions.filter(a => a.type !== 'pass' && a.type !== 'partition' && a.t);
+  const elapsed = moveTimes.length >= 2
+    ? moveTimes[moveTimes.length - 1].t - moveTimes[0].t : null;
+  const elapsedEl = document.getElementById('share-elapsed');
+  elapsedEl.textContent = elapsed != null ? `⏱ Sort duration: ${formatElapsed(elapsed)}` : '';
 
   // Focus + select so execCommand has a valid selection to work from
   ta.focus();
@@ -1529,6 +1846,15 @@ function loadSession(encoded) {
       state.playHead = state.actions.length - 1;
       applySnap(state.actions[state.playHead].snap);
     }
+    const elapsedEl = document.getElementById('share-elapsed');
+    if (payload.elapsed != null) {
+      const fmt = formatElapsed(payload.elapsed);
+      const warn = payload.elapsed < 5000 ? ' ⚠ unusually fast' : '';
+      elapsedEl.textContent = `⏱ Sort duration: ${fmt}${warn}`;
+      elapsedEl.style.color = payload.elapsed < 5000 ? '#e94560' : 'var(--muted)';
+      document.getElementById('share-box').style.display = 'flex';
+      document.getElementById('share-url').value = location.href;
+    }
     setStatus('Session loaded — use ◀ Prev / Next ▶ to review.', '');
     render();
   } catch (err) {
@@ -1540,13 +1866,115 @@ function loadSession(encoded) {
 // ═══════════════════════════════════════════════════════
 //  Wire up buttons
 // ═══════════════════════════════════════════════════════
-document.getElementById('new-btn').addEventListener('click', () => {
+// Worst-case / already-sorted puzzle generators
+const WORST_CASE_ALGO = {
+  bubble:    arr => [...arr].sort((a, b) => b.v - a.v),   // reverse sorted
+  insertion: arr => [...arr].sort((a, b) => b.v - a.v),   // reverse sorted
+  selection: arr => [...arr].sort((a, b) => b.v - a.v),   // reverse sorted (most dramatic)
+  quick:     arr => [...arr].sort((a, b) => a.v - b.v),   // already sorted (worst for first-pivot quicksort)
+  merge:     null,                                          // always O(n log n) — no meaningful worst case
+  counting:  null,
+  radix:     null,
+};
+
+function applyPuzzleType(type) {
+  if (type === 'random') {
+    document.getElementById('seed-input').value = '';
+    newPuzzle(null);
+    return;
+  }
+  // Generate a random base puzzle first, then rearrange cards
   document.getElementById('seed-input').value = '';
   newPuzzle(null);
+
+  if (type === 'sorted') {
+    state.array = state.initial.map(c => ({ ...c }));
+    state.array.sort((a, b) => a.v - b.v || a.tag.localeCompare(b.tag));
+    state.initial = state.array.map(c => ({ ...c }));
+    render();
+    return;
+  }
+
+  if (type === 'worst') {
+    const algo = state.algorithm;
+    const fn = algo ? WORST_CASE_ALGO[algo] : null;
+    if (!fn) {
+      const label = algo ? ALGO_LABELS[algo] : 'the declared algorithm';
+      setStatus(`No distinct worst case for ${label} — showing random puzzle.`, '');
+      return;
+    }
+    state.array   = fn(state.initial);
+    state.initial = state.array.map(c => ({ ...c }));
+    render();
+  }
+}
+
+document.getElementById('new-btn').addEventListener('click', () => applyPuzzleType('random'));
+document.getElementById('seed-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') applyPuzzleType('random');
 });
+
+// Dropdown caret
+const newDropdown = document.getElementById('new-dropdown');
+document.getElementById('new-caret-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  newDropdown.style.display = newDropdown.style.display === 'none' ? '' : 'none';
+});
+document.querySelectorAll('.puzzle-type-opt').forEach(el => {
+  el.addEventListener('click', () => {
+    newDropdown.style.display = 'none';
+    applyPuzzleType(el.dataset.type);
+  });
+});
+document.addEventListener('click', () => { newDropdown.style.display = 'none'; });
 document.getElementById('submit-btn').addEventListener('click', checkSort);
 document.getElementById('pass-btn').addEventListener('click', markPass);
 document.getElementById('undo-btn').addEventListener('click', undoLast);
+
+function doNextPartition() {
+  if (state.markers.L === null) return false;
+  const L = state.markers.L;
+  const R = state.markers.R;
+  const pivotCard = getRaw('array', L);
+  if (!isCard(pivotCard)) return false;
+  state.array[L] = { ...pivotCard, pivot: true };
+  recordAction(`Pivot ${pivotCard.v} already in final position [${L}] — next partition`, 'partition', { pivotIdx: L });
+  advanceQuickSort(L, R, L);
+  render();
+  return true;
+}
+
+function autoAdvanceIfPivotInPlace() {
+  if (state.algorithm !== 'quick' || state.markers.L === null) return;
+  // Don't auto-advance during playback (only in live mode)
+  if (state.actions.length > 0 && state.playHead < state.actions.length - 1) return;
+  const L = state.markers.L;
+  const R = state.markers.R;
+  const pivotCard = getRaw('array', L);
+  if (!isCard(pivotCard) || pivotCard.pivot) return;
+  // Pivot is in place if it's ≤ all elements in L+1..R
+  const pivotVal = pivotCard.v;
+  const allGreater = state.array.slice(L + 1, R + 1).every(c => !isCard(c) || c.v >= pivotVal);
+  if (allGreater) doNextPartition();
+}
+
+document.getElementById('next-partition-btn').addEventListener('click', doNextPartition);
+
+document.getElementById('set-l-btn').addEventListener('click', () => {
+  const active = state.markerMode === 'L';
+  state.markerMode = active ? null : 'L';
+  document.getElementById('set-l-btn').classList.toggle('marker-active', !active);
+  document.getElementById('set-r-btn').classList.remove('marker-active');
+  render();
+});
+
+document.getElementById('set-r-btn').addEventListener('click', () => {
+  const active = state.markerMode === 'R';
+  state.markerMode = active ? null : 'R';
+  document.getElementById('set-r-btn').classList.toggle('marker-active', !active);
+  document.getElementById('set-l-btn').classList.remove('marker-active');
+  render();
+});
 document.getElementById('shift-btn').addEventListener('click', () => {
   state.shiftMode = !state.shiftMode;
   const btn = document.getElementById('shift-btn');
@@ -1584,6 +2012,9 @@ document.getElementById('algo-select').addEventListener('change', function() {
   // Counting/radix: N+1 slots (index 0 unused; value V → slot V).
   // Merge: N slots (aux array same size as input).
   const isCounting = state.algorithm === 'counting' || state.algorithm === 'radix';
+
+  // Auto-initialize quicksort L/R markers
+  if (state.algorithm === 'quick') { initQuickSort(); render(); }
 
   // Auto-enable shift mode for insertion sort; disable it when switching away
   const isInsertion = state.algorithm === 'insertion';
@@ -1874,13 +2305,15 @@ function scoreInsertion(actions, n) {
 }
 
 function scoreSelection(actions, initial, n) {
-  const real   = actions.filter(a => a.type !== 'pass');
-  const swaps  = actions.filter(a => a.type === 'swap');
-  const shifts = actions.filter(a => a.type === 'shift');
-  const notes  = [];
+  const real       = actions.filter(a => a.type !== 'pass');
+  const swaps      = actions.filter(a => a.type === 'swap');
+  const shifts     = actions.filter(a => a.type === 'shift');
+  const partitions = actions.filter(a => a.type === 'partition');
+  const notes      = [];
 
   if (real.length === 0) return { score: 0, notes: ['No moves recorded'] };
   if (shifts.length > 0) return { score: 0, notes: ['✗ Shift actions present — incompatible with selection sort'] };
+  if (partitions.length > 0) return { score: 0.05, notes: ['✗ Partition markers recorded — this is quick sort, not selection sort'] };
 
   const scratchUsed = real.some(a => a.meta && (a.meta.toZone === 'scratch' || a.meta.fromZone === 'scratch'));
   if (scratchUsed) return { score: 0.05, notes: ['✗ Scratch used — selection sort needs no auxiliary storage'] };
@@ -2053,10 +2486,11 @@ function scoreMerge(actions, n) {
 }
 
 function scoreQuick(actions, n) {
-  const real   = actions.filter(a => a.type !== 'pass');
-  const swaps  = actions.filter(a => a.type === 'swap');
-  const shifts = actions.filter(a => a.type === 'shift');
-  const notes  = [];
+  const real       = actions.filter(a => a.type !== 'pass');
+  const swaps      = actions.filter(a => a.type === 'swap');
+  const shifts     = actions.filter(a => a.type === 'shift');
+  const partitions = actions.filter(a => a.type === 'partition');
+  const notes      = [];
 
   if (real.length === 0) return { score: 0, notes: ['No moves recorded'] };
   if (shifts.length > 0) return { score: 0.05, notes: ['✗ Shift actions present — not quick sort'] };
@@ -2064,25 +2498,33 @@ function scoreQuick(actions, n) {
   const scratchUsed = real.some(a => a.meta && (a.meta.toZone === 'scratch' || a.meta.fromZone === 'scratch'));
   if (scratchUsed) return { score: 0.05, notes: ['✗ Scratch used — quick sort is in-place'] };
 
+  // Partition actions are the definitive quicksort signal
+  if (partitions.length > 0) {
+    let score = 0.7;
+    notes.push(`✓ ${partitions.length} partition(s) recorded — definitive quick sort signal`);
+    if (swaps.length > 0) {
+      score += 0.15;
+      notes.push(`✓ ${swaps.length} swap(s) within partitions`);
+    }
+    // Expected n-1 total partitions for a complete quicksort
+    if (partitions.length >= n - 1) {
+      score += 0.15;
+      notes.push(`✓ Partition count (${partitions.length}) consistent with complete quicksort (n-1 = ${n-1})`);
+    }
+    return { score: Math.min(1, score), notes };
+  }
+
+  // Fallback: no partition actions — score on swap pattern alone (lower confidence)
   if (swaps.length === 0) return { score: 0.05, notes: ['✗ No swaps recorded'] };
 
   const nonAdj = swaps.filter(a =>
     !(a.meta.fromZone === 'array' && a.meta.toZone === 'array' && Math.abs(a.meta.fromIdx - a.meta.toIdx) === 1)
   );
-
   if (nonAdj.length === 0) return { score: 0.1, notes: ['All swaps adjacent — looks more like bubble sort'] };
 
-  let score = 0.3;
-  notes.push(`✓ ${nonAdj.length} non-adjacent swap(s) (partitioning around pivot)`);
-
-  if (swaps.length > n - 1) {
-    score += 0.15;
-    notes.push(`Swap count (${swaps.length}) above selection sort threshold`);
-  }
-
-  notes.push('(Quick sort is difficult to distinguish definitively from action patterns alone)');
-
-  return { score: Math.max(0, Math.min(0.6, score)), notes };
+  notes.push(`✓ ${nonAdj.length} non-adjacent swap(s)`);
+  notes.push('⚠ No partition markers recorded — confidence limited');
+  return { score: 0.3, notes };
 }
 
 function scoreRadix(actions, n) {
@@ -2126,10 +2568,17 @@ function analyzeSession() {
   const initialDisplacedCount = n - sortedFraction(initial.map(migrateCard)) * n;
   const moveCount = actions.filter(a => a.type !== 'pass').length;
   const effortFactor = initialDisplacedCount < 1
-    ? (moveCount === 0 ? 0 : 1)                                  // already sorted — any moves = full credit
+    ? 0                                                           // already sorted — nothing to sort, no evidence
     : Math.min(1, moveCount / (initialDisplacedCount * 0.8));    // scale effort vs work needed
 
   const penalty = correctnessFactor * effortFactor;
+
+  // --- stability penalty: an inherently-stable algorithm whose actual run broke
+  // stability made a move the canonical algorithm would never make (e.g. swapping
+  // two equal values) — this is direct evidence against that algorithm, not just
+  // a cosmetic footnote, so discount it the same way correctness/effort do. ---
+  const empiricalStable = measureActualStability(finalSnap.map(migrateCard), initial.map(migrateCard));
+  const stabilityBroken = empiricalStable === false;
 
   const scores = {
     bubble:    scoreBubble(actions, n),
@@ -2141,9 +2590,16 @@ function analyzeSession() {
     radix:     scoreRadix(actions, n),
   };
 
-  // Apply penalty to all raw scores
+  // Apply penalty to all raw scores; additionally discount inherently-stable
+  // algorithms whose actual run measurably broke stability.
   for (const key of Object.keys(scores)) {
-    scores[key] = { ...scores[key], score: scores[key].score * penalty };
+    let s = scores[key].score * penalty;
+    let notes = scores[key].notes;
+    if (stabilityBroken && ALGO_STABLE[key]) {
+      s *= 0.5;
+      notes = [...notes, `✗ ${ALGO_LABELS[key]} is inherently stable, but equal elements did not preserve order — confidence halved`];
+    }
+    scores[key] = { ...scores[key], score: s, notes };
   }
 
   const ranked = Object.entries(scores).sort((a, b) => b[1].score - a[1].score);
@@ -2195,7 +2651,7 @@ const ALGO_COLORS = {
   selection: '#50c878',
   counting:  '#c070f0',
   merge:     '#40c0e0',
-  quick:     '#ff6b6b',
+  quick:     '#4caf50',
   radix:     '#a0e040',
 };
 
@@ -2300,7 +2756,8 @@ function renderAnalysis() {
   }
 
   // Universal hint: if score < 100% and no passes were marked, remind the student
-  const passHint = (!hasPasses && topScore < 1.0 && cf > 0.99 && ef > 0.5)
+  // (not applicable to Quick Sort, which uses partition markers instead)
+  const passHint = (!hasPasses && topScore < 1.0 && cf > 0.99 && ef > 0.5 && declaredAlgo !== 'quick')
     ? `<li class="note">💡 Did you forget to mark passes? (⚑ Mark Pass after each pass)</li>`
     : '';
 
