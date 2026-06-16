@@ -1911,7 +1911,9 @@ function applyPuzzleType(type) {
 
 document.getElementById('new-btn').addEventListener('click', () => applyPuzzleType('random'));
 document.getElementById('seed-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') applyPuzzleType('random');
+  if (e.key !== 'Enter') return;
+  const typed = parseInt(document.getElementById('seed-input').value);
+  newPuzzle(!isNaN(typed) ? typed : null);
 });
 
 // Dropdown caret
@@ -2757,7 +2759,7 @@ function renderAnalysis() {
 
   // Universal hint: if score < 100% and no passes were marked, remind the student
   // (not applicable to Quick Sort, which uses partition markers instead)
-  const passHint = (!hasPasses && topScore < 1.0 && cf > 0.99 && ef > 0.5 && declaredAlgo !== 'quick')
+  const passHint = (!hasPasses && topScore < 1.0 && cf > 0.99 && ef > 0.5 && state.algorithm !== 'quick')
     ? `<li class="note">💡 Did you forget to mark passes? (⚑ Mark Pass after each pass)</li>`
     : '';
 
